@@ -12,6 +12,32 @@ dist
 dist-ssr
 *.local
 
+# Frontend build/cache
+frontend/dist/
+frontend/node_modules/
+frontend/.pytest_cache/
+frontend/.env
+
+# Backend build/cache
+backend/__pycache__/
+backend/.env
+backend/.pytest_cache/
+
+# Output
+output/
+output/audio/
+output/reports/
+output/videos/
+reports/
+
+# Python venv
+venv_*/
+
+# 一時ファイル
+*.tmp
+*.bak
+*.old
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,3 +52,17 @@ dist-ssr
 .env
 .env.local
 .env.example
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv_*/
+frontend/.env
+output/
+output/audio/
+output/reports/
+output/videos/
+reports/
+*.tmp
+*.bak
+*.old

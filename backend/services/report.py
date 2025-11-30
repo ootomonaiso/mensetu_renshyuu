@@ -11,27 +11,23 @@ logger = logging.getLogger(__name__)
 
 
 def generate_markdown_report(
-    output_path: str,
-    timestamp: str,
-    filename: str,
-    transcript: Dict[str, Any],
-    audio_features: Dict[str, Any],
-    ai_analysis: Dict[str, Any],
-    voice_emotion: Dict[str, Any] = None,
-    emotion_feedback: str = None
+    report_data: Dict[str, Any],
+    output_path: str
 ) -> None:
     """
-    Markdown レポートを生成
+    Markdown レポートを生成（リアルタイム分析用）
     
     Args:
+        report_data: レポートデータ（transcription, audio_features, voice_emotion, ai_analysis 含む）
         output_path: 出力ファイルパス
-        timestamp: タイムスタンプ
-        filename: 元のファイル名
-        transcript: 文字起こし結果
-        audio_features: 音響分析結果
-        ai_analysis: AI 分析結果
     """
     try:
+        # 後方互換性のため、旧形式の引数もサポート
+        if isinstance(report_data, str):
+            # 旧形式: output_path が第1引数
+            logger.warning("旧形式の generate_markdown_report 呼び出しを検出しました")
+            return _generate_markdown_report_legacy(*[report_data, output_path] + list(locals().values())[2:])
+        
         # テンプレート読み込み
         template_path = Path(__file__).parent.parent / "templates" / "report.md.j2"
         
@@ -46,22 +42,29 @@ def generate_markdown_report(
         template = Template(template_str)
         
         # データ準備
-        formatted_date = datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y年%m月%d日 %H:%M")
+        timestamp = datetime.now().strftime("%Y年%m月%d日 %H:%M")
+        filename = report_data.get("filename", "リアルタイム分析")
         
-        # 話速を再計算
-        if transcript.get("text") and audio_features.get("duration"):
-            actual_speech_rate = (len(transcript["text"]) / audio_features["duration"]) * 60
+        transcript = report_data.get("transcription", {})
+        audio_features = report_data.get("audio_features", {})
+        ai_analysis = report_data.get("ai_analysis", {})
+        voice_emotion = report_data.get("voice_emotion", {})
+        
+        # 話速の計算
+        if "duration" in audio_features and audio_features["duration"] > 0:
+            transcript_text = transcript.get("text", "")
+            actual_speech_rate = (len(transcript_text) / audio_features["duration"]) * 60
             audio_features["speech_rate"] = round(actual_speech_rate, 1)
         
         # レンダリング
         content = template.render(
-            date=formatted_date,
+            date=timestamp,
             filename=filename,
             transcript=transcript,
             audio=audio_features,
             ai=ai_analysis,
-            emotion=voice_emotion or {},
-            emotion_feedback=emotion_feedback or ""
+            emotion=voice_emotion,
+            emotion_feedback=voice_emotion.get("feedback", "")
         )
         
         # ファイル出力
@@ -190,3 +193,27 @@ def _get_default_template() -> str:
 **生成日時**: {{ date }}  
 **システム**: 圧勝面接練習システム v1.0
 """
+
+
+def _generate_markdown_report_legacy(
+    output_path: str,
+    timestamp: str,
+    filename: str,
+    transcript: Dict[str, Any],
+    audio_features: Dict[str, Any],
+    ai_analysis: Dict[str, Any],
+    voice_emotion: Dict[str, Any] = None,
+    emotion_feedback: str = None
+) -> None:
+    """
+    旧形式の generate_markdown_report（後方互換性用）
+    """
+    report_data = {
+        "filename": filename,
+        "transcription": transcript,
+        "audio_features": audio_features,
+        "ai_analysis": ai_analysis,
+        "voice_emotion": voice_emotion or {},
+    }
+    
+    return generate_markdown_report(report_data, output_path)

@@ -16,6 +16,14 @@ import os
 
 from backend.services.voice_emotion import analyze_voice_emotion
 
+try:
+    from backend.services.video_processors import PoseAnalyzer, EyeContactAnalyzer
+    VIDEO_ANALYSIS_AVAILABLE = True
+except ImportError:
+    VIDEO_ANALYSIS_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("video_processors が見つかりません。動画分析は無効化されます")
+
 logger = logging.getLogger(__name__)
 
 # Whisper モデルの遅延ロード
@@ -51,6 +59,14 @@ class RealtimeAnalyzer:
         self.accumulated_audio = bytearray()  # 文字起こし用バッファ
         self.transcription_threshold = 16000 * 2 * 5  # 5秒分（16kHz * 2 bytes * 5 sec）
         
+        # 動画分析プロセッサ（利用可能な場合のみ）
+        if VIDEO_ANALYSIS_AVAILABLE:
+            self.pose_analyzer = PoseAnalyzer()
+            self.eye_contact_analyzer = EyeContactAnalyzer()
+        else:
+            self.pose_analyzer = None
+            self.eye_contact_analyzer = None
+        
     async def analyze_audio_chunk(self, audio_data: bytes) -> Dict[str, Any]:
         """
         音声チャンクをリアルタイム分析
@@ -68,9 +84,9 @@ class RealtimeAnalyzer:
             # 音声レベル計算
             audio_level = self._calculate_audio_level(audio_data)
             
-            # 音声感情分析を実行
+            # 音声感情分析を実行（音声レベルが一定以上の場合のみ）
             emotion_result = {}
-            if len(audio_data) > 1000:  # 最低限のデータサイズチェック
+            if len(audio_data) > 1000 and audio_level > 5:  # 音声レベルが5以上の時のみ
                 try:
                     # BytesIO でラップして soundfile で読めるようにする
                     emotion_analysis = await asyncio.to_thread(
@@ -96,22 +112,22 @@ class RealtimeAnalyzer:
                 except Exception as e:
                     logger.warning(f"音声感情分析スキップ: {e}")
                     emotion_result = {
-                        "confidence": 70,
-                        "calmness": 65,
-                        "stability": 68,
-                        "volume": 60,
-                        "speaking_rate": 70,
-                        "pitch": 65,
+                        "confidence": 0,
+                        "calmness": 0,
+                        "stability": 0,
+                        "volume": 0,
+                        "speaking_rate": 0,
+                        "pitch": 0,
                     }
             else:
-                # データが少ない場合はデフォルト値
+                # データが少ない、または無音の場合は0
                 emotion_result = {
-                    "confidence": 70,
-                    "calmness": 65,
-                    "stability": 68,
-                    "volume": 60,
-                    "speaking_rate": 70,
-                    "pitch": 65,
+                    "confidence": 0,
+                    "calmness": 0,
+                    "stability": 0,
+                    "volume": 0,
+                    "speaking_rate": 0,
+                    "pitch": 0,
                 }
             
             # 文字起こし処理
@@ -227,39 +243,66 @@ class RealtimeAnalyzer:
     
     async def analyze_video_frame(self, frame_data: bytes) -> Dict[str, Any]:
         """
-        映像フレームをリアルタイム分析（Phase 4）
+        映像フレームをリアルタイム分析（MediaPipe）
         
         Args:
             frame_data: 映像フレームのバイナリデータ
             
         Returns:
-            分析結果（姿勢、表情、視線）
+            分析結果（姿勢、視線）
         """
         try:
-            # TODO: MediaPipe で姿勢・表情分析
-            # 現在はダミー実装
-            
-            result = {
-                "type": "video_analysis",
-                "timestamp": asyncio.get_event_loop().time(),
-                "posture": {
-                    "score": 80,
-                    "feedback": "良好な姿勢です",
-                },
-                "eye_contact": {
-                    "score": 70,
-                    "feedback": "適度な視線が保たれています",
-                },
-                "expression": {
-                    "type": "neutral",
-                    "confidence": 0.8,
-                },
-            }
+            # MediaPipe が利用可能な場合は実際に分析
+            if VIDEO_ANALYSIS_AVAILABLE and self.pose_analyzer and self.eye_contact_analyzer:
+                # 並列処理で姿勢と視線を分析
+                posture_task = asyncio.create_task(
+                    self.pose_analyzer.analyze(frame_data)
+                )
+                eye_contact_task = asyncio.create_task(
+                    self.eye_contact_analyzer.analyze(frame_data)
+                )
+                
+                # 両方の完了を待つ
+                posture_result, eye_contact_result = await asyncio.gather(
+                    posture_task,
+                    eye_contact_task,
+                    return_exceptions=True
+                )
+                
+                # エラーハンドリング
+                if isinstance(posture_result, Exception):
+                    logger.error(f"姿勢分析エラー: {posture_result}")
+                    posture_result = {"score": 75, "feedback": "分析中..."}
+                
+                if isinstance(eye_contact_result, Exception):
+                    logger.error(f"視線分析エラー: {eye_contact_result}")
+                    eye_contact_result = {"score": 70, "feedback": "分析中..."}
+                
+                result = {
+                    "type": "video_analysis",
+                    "timestamp": asyncio.get_event_loop().time(),
+                    "posture": posture_result,
+                    "eye_contact": eye_contact_result,
+                }
+            else:
+                # MediaPipe が利用不可の場合はダミー値
+                result = {
+                    "type": "video_analysis",
+                    "timestamp": asyncio.get_event_loop().time(),
+                    "posture": {
+                        "score": 80,
+                        "feedback": "姿勢分析は利用できません（MediaPipe未インストール）",
+                    },
+                    "eye_contact": {
+                        "score": 70,
+                        "feedback": "視線分析は利用できません（MediaPipe未インストール）",
+                    },
+                }
             
             return result
             
         except Exception as e:
-            logger.error(f"映像分析エラー: {e}")
+            logger.error(f"映像分析エラー: {e}", exc_info=True)
             return {
                 "type": "error",
                 "message": str(e)

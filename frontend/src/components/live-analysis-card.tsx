@@ -19,10 +19,12 @@ interface AnalysisResult {
   posture?: {
     score: number
     feedback: string
+    overlay_image?: string
   }
   eye_contact?: {
     score: number
     feedback: string
+    overlay_image?: string
   }
   report_url?: string
   report_path?: string
@@ -43,6 +45,7 @@ export const LiveAnalysisCard = () => {
   })
   const [posture, setPosture] = useState({ score: 0, feedback: '' })
   const [eyeContact, setEyeContact] = useState({ score: 0, feedback: '' })
+  const [overlayImage, setOverlayImage] = useState<string | null>(null)
   const [reportUrl, setReportUrl] = useState<string | null>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -83,8 +86,20 @@ export const LiveAnalysisCard = () => {
           if (data.transcription) setTranscription((prev) => prev + ' ' + data.transcription)
           if (data.emotion) setEmotion(data.emotion)
         } else if (data.type === 'video_analysis') {
-          if (data.posture) setPosture(data.posture)
-          if (data.eye_contact) setEyeContact(data.eye_contact)
+          if (data.posture) {
+            setPosture(data.posture)
+            // 姿勢のオーバーレイ画像を優先表示
+            if (data.posture.overlay_image) {
+              setOverlayImage(`data:image/jpeg;base64,${data.posture.overlay_image}`)
+            }
+          }
+          if (data.eye_contact) {
+            setEyeContact(data.eye_contact)
+            // 視線のオーバーレイ画像（姿勢がなければ表示）
+            if (!data.posture?.overlay_image && data.eye_contact.overlay_image) {
+              setOverlayImage(`data:image/jpeg;base64,${data.eye_contact.overlay_image}`)
+            }
+          }
         } else if (data.type === 'report_ready') {
           if (data.report_url) {
             setReportUrl(data.report_url)
@@ -202,13 +217,22 @@ export const LiveAnalysisCard = () => {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="relative overflow-hidden rounded-lg border bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full"
-          />
+          {/* オーバーレイ画像がある場合はそれを表示、なければ生の映像 */}
+          {overlayImage ? (
+            <img 
+              src={overlayImage} 
+              alt="分析オーバーレイ" 
+              className="w-full"
+            />
+          ) : (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full"
+            />
+          )}
           <canvas ref={canvasRef} className="hidden" />
           
           {/* オーバーレイ表示 */}

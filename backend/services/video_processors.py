@@ -6,14 +6,16 @@ MediaPipe を使った骨格検出・姿勢分析
 import asyncio
 import logging
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import cv2
+import base64
 
 logger = logging.getLogger(__name__)
 
 # グローバルモデルキャッシュ
 _pose_detector = None
 _face_mesh_detector = None
+_mediapipe_import_failed = False  # インポート失敗フラグ
 
 
 class PoseAnalyzer:
@@ -24,8 +26,8 @@ class PoseAnalyzer:
         
     async def initialize(self):
         """MediaPipe Pose を初期化"""
-        global _pose_detector
-        if _pose_detector is None:
+        global _pose_detector, _mediapipe_import_failed
+        if _pose_detector is None and not _mediapipe_import_failed:
             try:
                 import mediapipe as mp
                 logger.info("MediaPipe Pose をロード中...")
@@ -37,6 +39,12 @@ class PoseAnalyzer:
                     min_tracking_confidence=0.5
                 )
                 logger.info("MediaPipe Pose のロード完了")
+            except ImportError:
+                if not _mediapipe_import_failed:
+                    logger.warning("MediaPipe がインストールされていません。姿勢分析は無効です。")
+                    logger.info("インストール方法: pip install mediapipe (Python 3.12以下が必要)")
+                    _mediapipe_import_failed = True
+                _pose_detector = None
             except Exception as e:
                 logger.warning(f"MediaPipe Pose のロード失敗: {e}")
                 _pose_detector = None
@@ -50,7 +58,7 @@ class PoseAnalyzer:
             frame_data: JPEG画像バイナリ
             
         Returns:
-            姿勢スコアとフィードバック
+            姿勢スコアとフィードバック + オーバーレイ画像
         """
         if self.pose is None:
             await self.initialize()
@@ -75,8 +83,24 @@ class PoseAnalyzer:
                 return {
                     "score": 50,
                     "feedback": "姿勢を検出できませんでした",
-                    "details": {}
+                    "details": {},
+                    "overlay_image": None
                 }
+            
+            # 骨格をオーバーレイ描画
+            overlay_image = self._draw_pose_overlay(image.copy(), results)
+            
+            # Base64エンコード
+            _, buffer = cv2.imencode('.jpg', overlay_image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            overlay_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            
+            # 骨格をオーバーレイ描画
+            overlay_image = self._draw_pose_overlay(image.copy(), results)
+            
+            # Base64エンコード
+            _, buffer = cv2.imencode('.jpg', overlay_image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            overlay_base64 = base64.b64encode(buffer).decode('utf-8')
             
             # 骨格から姿勢を評価
             landmarks = results.pose_landmarks.landmark
@@ -124,18 +148,59 @@ class PoseAnalyzer:
                     "shoulder_level": float(1 - shoulder_angle * 10),
                     "spine_alignment": float(1 - spine_alignment * 5),
                     "forward_lean": float(-nose.z) if nose.z < 0 else 0.0
-                }
+                },
+                "overlay_image": overlay_base64
             }
             
         except Exception as e:
             logger.warning(f"姿勢分析エラー: {e}")
             return self._default_posture()
     
+    def _draw_pose_overlay(self, image: np.ndarray, results) -> np.ndarray:
+        """骨格線をオーバーレイ描画"""
+        try:
+            import mediapipe as mp
+            mp_drawing = mp.solutions.drawing_utils
+            mp_pose = mp.solutions.pose
+            
+            # MediaPipe の標準描画
+            mp_drawing.draw_landmarks(
+                image,
+                results.pose_landmarks,
+                mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec=mp_drawing.DrawingSpec(
+                    color=(0, 255, 0), thickness=2, circle_radius=3
+                ),
+                connection_drawing_spec=mp_drawing.DrawingSpec(
+                    color=(0, 255, 255), thickness=2
+                )
+            )
+            
+            # スコアに応じた色付けポイント
+            landmarks = results.pose_landmarks.landmark
+            h, w, _ = image.shape
+            
+            # 肩のラインを強調
+            left_shoulder = landmarks[11]
+            right_shoulder = landmarks[12]
+            cv2.line(
+                image,
+                (int(left_shoulder.x * w), int(left_shoulder.y * h)),
+                (int(right_shoulder.x * w), int(right_shoulder.y * h)),
+                (255, 0, 0), 3
+            )
+            
+            return image
+        except Exception as e:
+            logger.warning(f"描画エラー: {e}")
+            return image
+    
     def _default_posture(self) -> Dict[str, Any]:
         return {
             "score": 75,
             "feedback": "姿勢分析中...",
-            "details": {}
+            "details": {},
+            "overlay_image": None
         }
 
 
@@ -147,8 +212,8 @@ class EyeContactAnalyzer:
         
     async def initialize(self):
         """MediaPipe Face Mesh を初期化"""
-        global _face_mesh_detector
-        if _face_mesh_detector is None:
+        global _face_mesh_detector, _mediapipe_import_failed
+        if _face_mesh_detector is None and not _mediapipe_import_failed:
             try:
                 import mediapipe as mp
                 logger.info("MediaPipe Face Mesh をロード中...")
@@ -160,6 +225,11 @@ class EyeContactAnalyzer:
                     min_tracking_confidence=0.5
                 )
                 logger.info("MediaPipe Face Mesh のロード完了")
+            except ImportError:
+                if not _mediapipe_import_failed:
+                    logger.warning("MediaPipe がインストールされていません。視線分析は無効です。")
+                    _mediapipe_import_failed = True
+                _face_mesh_detector = None
             except Exception as e:
                 logger.warning(f"MediaPipe Face Mesh のロード失敗: {e}")
                 _face_mesh_detector = None
@@ -173,7 +243,7 @@ class EyeContactAnalyzer:
             frame_data: JPEG画像バイナリ
             
         Returns:
-            視線スコアとフィードバック
+            視線スコアとフィードバック + オーバーレイ画像
         """
         if self.face_mesh is None:
             await self.initialize()
@@ -198,8 +268,24 @@ class EyeContactAnalyzer:
                 return {
                     "score": 50,
                     "feedback": "顔を検出できませんでした",
-                    "details": {}
+                    "details": {},
+                    "overlay_image": None
                 }
+            
+            # 顔メッシュをオーバーレイ描画
+            overlay_image = self._draw_face_overlay(image.copy(), results)
+            
+            # Base64エンコード
+            _, buffer = cv2.imencode('.jpg', overlay_image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            overlay_base64 = base64.b64encode(buffer).decode('utf-8')
+            
+            
+            # 顔メッシュをオーバーレイ描画
+            overlay_image = self._draw_face_overlay(image.copy(), results)
+            
+            # Base64エンコード
+            _, buffer = cv2.imencode('.jpg', overlay_image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            overlay_base64 = base64.b64encode(buffer).decode('utf-8')
             
             # 虹彩の位置から視線方向を推定
             landmarks = results.multi_face_landmarks[0].landmark
@@ -233,16 +319,58 @@ class EyeContactAnalyzer:
                 "details": {
                     "gaze_offset": float(avg_offset),
                     "looking_away": avg_offset > 0.2
-                }
+                },
+                "overlay_image": overlay_base64
             }
             
         except Exception as e:
             logger.warning(f"視線分析エラー: {e}")
             return self._default_eye_contact()
     
+    def _draw_face_overlay(self, image: np.ndarray, results) -> np.ndarray:
+        """顔メッシュと視線ガイドをオーバーレイ描画"""
+        try:
+            import mediapipe as mp
+            mp_drawing = mp.solutions.drawing_utils
+            mp_face_mesh = mp.solutions.face_mesh
+            
+            # 顔メッシュの描画（目と口周りのみ）
+            mp_drawing.draw_landmarks(
+                image,
+                results.multi_face_landmarks[0],
+                mp_face_mesh.FACEMESH_IRISES,  # 虹彩
+                landmark_drawing_spec=mp_drawing.DrawingSpec(
+                    color=(0, 255, 0), thickness=1, circle_radius=1
+                ),
+                connection_drawing_spec=mp_drawing.DrawingSpec(
+                    color=(0, 255, 0), thickness=1
+                )
+            )
+            
+            # 視線方向の矢印を描画
+            landmarks = results.multi_face_landmarks[0].landmark
+            h, w, _ = image.shape
+            
+            # 左目と右目の中心
+            left_iris = landmarks[468]
+            right_iris = landmarks[473]
+            
+            left_x, left_y = int(left_iris.x * w), int(left_iris.y * h)
+            right_x, right_y = int(right_iris.x * w), int(right_iris.y * h)
+            
+            # 虹彩を強調
+            cv2.circle(image, (left_x, left_y), 3, (255, 0, 0), -1)
+            cv2.circle(image, (right_x, right_y), 3, (255, 0, 0), -1)
+            
+            return image
+        except Exception as e:
+            logger.warning(f"描画エラー: {e}")
+            return image
+    
     def _default_eye_contact(self) -> Dict[str, Any]:
         return {
             "score": 70,
             "feedback": "視線分析中...",
-            "details": {}
+            "details": {},
+            "overlay_image": None
         }
