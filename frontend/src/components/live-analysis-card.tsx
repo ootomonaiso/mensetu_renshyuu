@@ -33,7 +33,6 @@ export const LiveAnalysisCard = () => {
   const [posture, setPosture] = useState({ score: 0, feedback: '' })
   const [eyeContact, setEyeContact] = useState({ score: 0, feedback: '' })
   const [reportUrl, setReportUrl] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -57,7 +56,6 @@ export const LiveAnalysisCard = () => {
 
       // WebSocket 接続
       const sessionId = `session_${Date.now()}`
-      setSessionId(sessionId)
       const ws = new WebSocket(`ws://localhost:8000/ws/live-analysis/${sessionId}`)
       wsRef.current = ws
 
