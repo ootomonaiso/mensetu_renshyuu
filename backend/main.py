@@ -21,6 +21,7 @@ from services.ai_analysis import analyze_with_gemini
 from services.report import generate_markdown_report
 from services.voice_emotion import analyze_voice_emotion, get_emotion_feedback
 from services.realtime_transcription import RealtimeTranscriber
+from services.video_analysis import analyze_video
 
 # 環境変数読み込み
 load_dotenv()
@@ -43,16 +44,19 @@ app = FastAPI(
 OUTPUT_DIR = Path("output")
 AUDIO_DIR = OUTPUT_DIR / "audio"
 REPORTS_DIR = OUTPUT_DIR / "reports"
+VIDEO_DIR = OUTPUT_DIR / "videos"
 STATIC_DIR = Path("backend/static")
 
 # ディレクトリ作成
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 # 静的ファイル配信
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/reports", StaticFiles(directory=str(REPORTS_DIR)), name="reports")
+app.mount("/videos", StaticFiles(directory=str(VIDEO_DIR)), name="videos")
 
 # WebSocket 接続管理
 active_connections: Dict[str, WebSocket] = {}
@@ -387,6 +391,52 @@ async def analyze_interview(file: UploadFile = File(...)) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"分析エラー: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"分析に失敗しました: {str(e)}")
+
+
+@app.post("/api/video/analyze")
+async def analyze_video_endpoint(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    動画ファイルを受け取り、将来のビデオ分析処理へ連携するためのプレースホルダ API
+
+    Phase 4 で実装予定の MediaPipe 解析に備え、現時点ではファイル保存とスタブ分析のみ行う。
+    """
+    try:
+        allowed_extensions = {".mp4", ".mov", ".webm", ".mkv"}
+        file_ext = Path(file.filename).suffix.lower()
+
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"サポートされていない動画形式です。対応形式: {', '.join(sorted(allowed_extensions))}"
+            )
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        video_filename = f"{timestamp}_{file.filename}"
+        video_path = VIDEO_DIR / video_filename
+
+        logger.info(f"動画ファイル保存開始: {video_filename}")
+        with open(video_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        logger.info(f"動画ファイル保存完了: {video_path} ({len(content)} bytes)")
+
+        # Phase 4 予定のビデオ分析スタブを呼び出し
+        analysis_result = analyze_video(str(video_path))
+
+        preview_url = f"/videos/{video_filename}"
+
+        return {
+            "status": "pending",
+            "message": "ビデオ分析は Phase 4 で本格対応予定です。アップロードした動画は安全に保存されています。",
+            "preview_url": preview_url,
+            "analysis": analysis_result,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"動画分析エラー: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"動画の処理に失敗しました: {str(e)}")
 
 
 @app.get("/api/reports")
