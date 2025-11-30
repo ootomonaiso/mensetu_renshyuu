@@ -28,7 +28,8 @@ def get_whisper_model():
         try:
             from faster_whisper import WhisperModel
             logger.info("Whisper モデルをロード中...")
-            _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+            # small モデルで精度向上（base より正確だが少し重い）
+            _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
             logger.info("Whisper モデルのロード完了")
         except Exception as e:
             logger.error(f"Whisper モデルのロード失敗: {e}")
@@ -48,7 +49,7 @@ class RealtimeAnalyzer:
         self.start_time = datetime.now()
         self.total_audio_duration = 0.0
         self.accumulated_audio = bytearray()  # 文字起こし用バッファ
-        self.transcription_threshold = 16000 * 3  # 3秒分（16kHz * 2 bytes）
+        self.transcription_threshold = 16000 * 2 * 5  # 5秒分（16kHz * 2 bytes * 5 sec）
         
     async def analyze_audio_chunk(self, audio_data: bytes) -> Dict[str, Any]:
         """
@@ -122,8 +123,9 @@ class RealtimeAnalyzer:
                 transcription_text = await self._transcribe_audio(bytes(self.accumulated_audio))
                 if transcription_text:
                     self.transcription_buffer.append(transcription_text)
-                # バッファをクリア（オーバーラップのために少し残す）
-                self.accumulated_audio = bytearray(self.accumulated_audio[-8000:])
+                # バッファをクリア（オーバーラップのために2秒分残す）
+                overlap_size = 16000 * 2 * 2  # 2秒分
+                self.accumulated_audio = bytearray(self.accumulated_audio[-overlap_size:])
             
             result = {
                 "type": "audio_analysis",
@@ -158,33 +160,58 @@ class RealtimeAnalyzer:
             if model is None:
                 return ""
             
+            # PCM データを numpy 配列に変換
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            
+            # 音声の音量を確認（無音チェック）
+            rms = np.sqrt(np.mean(audio_array ** 2))
+            if rms < 0.01:  # 音量が極端に小さい場合はスキップ
+                logger.info("音声が小さすぎるため文字起こしをスキップ")
+                return ""
+            
             # 一時ファイルに WAV 形式で保存
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
                 tmp_path = tmp_file.name
                 
-                # PCM → WAV 変換（pydub使用）
+                # numpy array → pydub AudioSegment → WAV
                 from pydub import AudioSegment
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                audio_int16 = (audio_array * 32768).astype(np.int16)
                 audio_segment = AudioSegment(
-                    audio_array.tobytes(),
+                    audio_int16.tobytes(),
                     frame_rate=16000,
                     sample_width=2,
                     channels=1
                 )
+                
+                # 音量正規化（小さすぎる音声を増幅）
+                audio_segment = audio_segment.normalize()
+                
                 audio_segment.export(tmp_path, format="wav")
             
             try:
-                # Whisper で文字起こし
-                segments, _ = await asyncio.to_thread(
+                # Whisper で文字起こし（パラメータ最適化）
+                segments, info = await asyncio.to_thread(
                     model.transcribe, 
                     tmp_path, 
                     language="ja",
-                    beam_size=1,  # 速度優先
-                    vad_filter=True  # 無音部分をスキップ
+                    beam_size=5,  # 精度重視（1→5）
+                    best_of=5,  # 候補数を増やす
+                    temperature=0.0,  # 確定的な出力
+                    vad_filter=True,  # 無音部分をスキップ
+                    vad_parameters=dict(
+                        min_silence_duration_ms=500,  # 500ms以上の無音を検出
+                        threshold=0.3,  # VAD閾値（低めで敏感に）
+                    ),
+                    condition_on_previous_text=False,  # 前の文脈に依存しない
                 )
                 
                 transcription = " ".join([segment.text.strip() for segment in segments])
-                logger.info(f"文字起こし成功: {transcription[:50]}...")
+                
+                if transcription:
+                    logger.info(f"文字起こし成功 [{info.language}, {info.language_probability:.2f}]: {transcription}")
+                else:
+                    logger.info("文字起こし結果が空です（無音またはノイズのみ）")
+                
                 return transcription
                 
             finally:
