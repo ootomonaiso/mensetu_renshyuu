@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') ?? ''
+const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/$/, '') ?? 'http://localhost:8000'
 
 const analyzeSummarySchema = z.object({
   status: z.string(),

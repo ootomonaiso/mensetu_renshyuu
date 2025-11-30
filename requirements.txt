@@ -31,7 +31,7 @@ httpx>=0.25.0  # FastAPI TestClient 用
 
 # === Video Analysis (Phase 4) ===
 opencv-python>=4.8.0
-mediapipe>=0.10.0
+mediapipe>=0.10.0; python_version < "3.12"
 
 # === 将来的な拡張 (Phase 2+) ===
 # weasyprint>=60.0  # PDF 生成

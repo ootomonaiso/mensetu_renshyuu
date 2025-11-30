@@ -15,16 +15,16 @@ import asyncio
 import json
 from dotenv import load_dotenv
 
-from services.transcription import transcribe_audio
-from services.audio_analysis import analyze_audio_features
-from services.ai_analysis import analyze_with_gemini
-from services.report import generate_markdown_report
-from services.voice_emotion import analyze_voice_emotion, get_emotion_feedback
-from services.realtime_transcription import RealtimeTranscriber
-from services.video_analysis import analyze_video
+# 環境変数読み込み (backend/.env を優先)
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-# 環境変数読み込み
-load_dotenv()
+from backend.services.transcription import transcribe_audio
+from backend.services.audio_analysis import analyze_audio_features
+from backend.services.ai_analysis import analyze_with_gemini
+from backend.services.report import generate_markdown_report
+from backend.services.voice_emotion import analyze_voice_emotion, get_emotion_feedback
+from backend.services.realtime_transcription import RealtimeTranscriber
+from backend.services.video_analysis import analyze_video
 
 # ロギング設定
 logging.basicConfig(
