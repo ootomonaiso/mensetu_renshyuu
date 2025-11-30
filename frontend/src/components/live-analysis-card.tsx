@@ -257,6 +257,24 @@ export const LiveAnalysisCard = () => {
             </div>
           </div>
         )}
+
+        {reportUrl && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+            <p className="text-sm font-semibold text-green-900">✅ レポートが生成されました</p>
+            <div className="mt-3 flex gap-3">
+              <Button asChild className="flex-1">
+                <a href={`http://localhost:8000${reportUrl}`} target="_blank" rel="noreferrer">
+                  📄 レポートを開く
+                </a>
+              </Button>
+              <Button asChild variant="outline" className="flex-1">
+                <a href={`http://localhost:8000${reportUrl}`} download>
+                  💾 ダウンロード
+                </a>
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
