@@ -4,6 +4,7 @@
 音声ファイルをアップロード → 分析 → Markdown レポート生成
 """
 from fastapi import FastAPI, File, UploadFile, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -25,6 +26,7 @@ from backend.services.report import generate_markdown_report
 from backend.services.voice_emotion import analyze_voice_emotion, get_emotion_feedback
 from backend.services.realtime_transcription import RealtimeTranscriber
 from backend.services.video_analysis import analyze_video
+from backend.services.realtime_analyzer import RealtimeAnalyzer
 
 # ロギング設定
 logging.basicConfig(
@@ -38,6 +40,15 @@ app = FastAPI(
     title="圧勝面接練習システム",
     description="音声分析 → AI 評価 → Markdown レポート生成",
     version="1.0.0"
+)
+
+# CORS 設定 (フロントエンドからのアクセスを許可)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite/React 開発サーバー
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 出力ディレクトリ設定
@@ -596,3 +607,94 @@ async def websocket_realtime_analysis(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+
+@app.websocket("/ws/live-analysis/{session_id}")
+async def websocket_live_analysis(websocket: WebSocket, session_id: str):
+    """
+    リアルタイム音声+映像分析WebSocketエンドポイント
+    
+    クライアント → サーバー:
+        { "type": "audio", "data": base64_audio_chunk }
+        { "type": "video", "data": base64_video_frame }
+        { "type": "stop" }
+    
+    サーバー → クライアント:
+        { "type": "audio_analysis", "transcription": "...", "emotion": {...}, "audio_level": 75 }
+        { "type": "video_analysis", "posture": {...}, "eye_contact": {...} }
+        { "type": "summary", ... }
+    """
+    await websocket.accept()
+    active_connections[session_id] = websocket
+    
+    analyzer = RealtimeAnalyzer(session_id)
+    logger.info(f"リアルタイム分析開始: {session_id}")
+    
+    try:
+        await websocket.send_json({
+            "type": "connected",
+            "session_id": session_id,
+            "message": "リアルタイム分析準備完了"
+        })
+        
+        while True:
+            try:
+                data = await websocket.receive_json()
+                message_type = data.get("type")
+                
+                if message_type == "audio":
+                    # 音声チャンク分析
+                    import base64
+                    audio_bytes = base64.b64decode(data.get("data", ""))
+                    result = await analyzer.analyze_audio_chunk(audio_bytes)
+                    await websocket.send_json(result)
+                    
+                elif message_type == "video":
+                    # 映像フレーム分析
+                    import base64
+                    frame_bytes = base64.b64decode(data.get("data", ""))
+                    result = await analyzer.analyze_video_frame(frame_bytes)
+                    await websocket.send_json(result)
+                    
+                elif message_type == "stop":
+                    # セッション終了：サマリーとレポート生成
+                    logger.info(f"セッション終了: {session_id}")
+                    
+                    # サマリー送信
+                    summary = await analyzer.get_summary()
+                    await websocket.send_json(summary)
+                    
+                    # レポート生成
+                    try:
+                        report_info = await analyzer.generate_report(str(REPORTS_DIR))
+                        await websocket.send_json({
+                            "type": "report_ready",
+                            "report_url": report_info["report_url"],
+                            "report_path": report_info["report_path"],
+                            "message": "レポートが生成されました"
+                        })
+                        logger.info(f"レポート生成完了: {report_info['report_path']}")
+                    except Exception as e:
+                        logger.error(f"レポート生成エラー: {e}", exc_info=True)
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"レポート生成に失敗しました: {str(e)}"
+                        })
+                    
+                    break
+                    
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket切断: {session_id}")
+                break
+            except Exception as e:
+                logger.error(f"分析エラー: {e}", exc_info=True)
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e)
+                })
+                
+    finally:
+        if session_id in active_connections:
+            del active_connections[session_id]
+        logger.info(f"リアルタイム分析終了: {session_id}")
+

@@ -1,6 +1,7 @@
 import { AudioRecorderCard } from '@/components/audio-recorder-card'
 import { ReportList } from '@/components/report-list'
 import { VideoRecorderCard } from '@/components/video-recorder-card'
+import { LiveAnalysisCard } from '@/components/live-analysis-card'
 import { Button } from '@/components/ui/button'
 
 const App = () => {
@@ -31,6 +32,9 @@ const App = () => {
       </header>
 
       <main className="mx-auto mt-10 grid max-w-6xl gap-6 px-6 lg:grid-cols-2">
+        <div className="lg:col-span-2">
+          <LiveAnalysisCard />
+        </div>
         <AudioRecorderCard />
         <VideoRecorderCard />
         <div className="lg:col-span-2">
