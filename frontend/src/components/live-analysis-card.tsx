@@ -11,6 +11,10 @@ interface AnalysisResult {
   emotion?: {
     confidence: number
     calmness: number
+    stability: number
+    volume: number
+    speaking_rate: number
+    pitch: number
   }
   posture?: {
     score: number
@@ -29,7 +33,14 @@ export const LiveAnalysisCard = () => {
   const [isActive, setIsActive] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [transcription, setTranscription] = useState('')
-  const [emotion, setEmotion] = useState({ confidence: 0, calmness: 0 })
+  const [emotion, setEmotion] = useState({ 
+    confidence: 0, 
+    calmness: 0,
+    stability: 0,
+    volume: 0,
+    speaking_rate: 0,
+    pitch: 0
+  })
   const [posture, setPosture] = useState({ score: 0, feedback: '' })
   const [eyeContact, setEyeContact] = useState({ score: 0, feedback: '' })
   const [reportUrl, setReportUrl] = useState<string | null>(null)
@@ -212,9 +223,31 @@ export const LiveAnalysisCard = () => {
               
               <div className="rounded bg-black/70 p-3 text-white backdrop-blur-sm">
                 <p className="text-xs font-semibold">感情スコア</p>
-                <div className="mt-1 flex gap-4 text-xs">
-                  <span>自信: {emotion.confidence}%</span>
-                  <span>落ち着き: {emotion.calmness}%</span>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <span className="text-blue-300">自信</span>
+                    <p className="text-lg font-bold">{emotion.confidence}%</p>
+                  </div>
+                  <div>
+                    <span className="text-green-300">落ち着き</span>
+                    <p className="text-lg font-bold">{emotion.calmness}%</p>
+                  </div>
+                  <div>
+                    <span className="text-yellow-300">安定性</span>
+                    <p className="text-lg font-bold">{emotion.stability}%</p>
+                  </div>
+                  <div>
+                    <span className="text-purple-300">声量</span>
+                    <p className="text-lg font-bold">{emotion.volume}%</p>
+                  </div>
+                  <div>
+                    <span className="text-pink-300">話速</span>
+                    <p className="text-lg font-bold">{emotion.speaking_rate}%</p>
+                  </div>
+                  <div>
+                    <span className="text-orange-300">声の高さ</span>
+                    <p className="text-lg font-bold">{emotion.pitch}%</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -240,17 +273,49 @@ export const LiveAnalysisCard = () => {
               <p className="mt-1 text-sm">{transcription || '（音声を待機中...）'}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg border bg-blue-50 p-3">
-                <p className="text-xs font-semibold text-blue-900">姿勢</p>
-                <p className="text-2xl font-bold text-blue-700">{posture.score}%</p>
-                <p className="text-xs text-blue-600">{posture.feedback}</p>
+                <p className="text-xs font-semibold text-blue-900">自信度</p>
+                <p className="text-2xl font-bold text-blue-700">{emotion.confidence}%</p>
               </div>
               
               <div className="rounded-lg border bg-green-50 p-3">
-                <p className="text-xs font-semibold text-green-900">視線</p>
-                <p className="text-2xl font-bold text-green-700">{eyeContact.score}%</p>
-                <p className="text-xs text-green-600">{eyeContact.feedback}</p>
+                <p className="text-xs font-semibold text-green-900">落ち着き</p>
+                <p className="text-2xl font-bold text-green-700">{emotion.calmness}%</p>
+              </div>
+              
+              <div className="rounded-lg border bg-yellow-50 p-3">
+                <p className="text-xs font-semibold text-yellow-900">安定性</p>
+                <p className="text-2xl font-bold text-yellow-700">{emotion.stability}%</p>
+              </div>
+              
+              <div className="rounded-lg border bg-purple-50 p-3">
+                <p className="text-xs font-semibold text-purple-900">声量</p>
+                <p className="text-2xl font-bold text-purple-700">{emotion.volume}%</p>
+              </div>
+              
+              <div className="rounded-lg border bg-pink-50 p-3">
+                <p className="text-xs font-semibold text-pink-900">話速</p>
+                <p className="text-2xl font-bold text-pink-700">{emotion.speaking_rate}%</p>
+              </div>
+              
+              <div className="rounded-lg border bg-orange-50 p-3">
+                <p className="text-xs font-semibold text-orange-900">声の高さ</p>
+                <p className="text-2xl font-bold text-orange-700">{emotion.pitch}%</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border bg-indigo-50 p-3">
+                <p className="text-xs font-semibold text-indigo-900">姿勢</p>
+                <p className="text-2xl font-bold text-indigo-700">{posture.score}%</p>
+                <p className="text-xs text-indigo-600">{posture.feedback}</p>
+              </div>
+              
+              <div className="rounded-lg border bg-teal-50 p-3">
+                <p className="text-xs font-semibold text-teal-900">視線</p>
+                <p className="text-2xl font-bold text-teal-700">{eyeContact.score}%</p>
+                <p className="text-xs text-teal-600">{eyeContact.feedback}</p>
               </div>
             </div>
           </div>

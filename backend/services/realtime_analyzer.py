@@ -11,10 +11,29 @@ import io
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import numpy as np
+import tempfile
+import os
 
 from backend.services.voice_emotion import analyze_voice_emotion
 
 logger = logging.getLogger(__name__)
+
+# Whisper モデルの遅延ロード
+_whisper_model = None
+
+def get_whisper_model():
+    """Whisper モデルを取得（初回のみロード）"""
+    global _whisper_model
+    if _whisper_model is None:
+        try:
+            from faster_whisper import WhisperModel
+            logger.info("Whisper モデルをロード中...")
+            _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+            logger.info("Whisper モデルのロード完了")
+        except Exception as e:
+            logger.error(f"Whisper モデルのロード失敗: {e}")
+            _whisper_model = None
+    return _whisper_model
 
 
 class RealtimeAnalyzer:
@@ -28,6 +47,8 @@ class RealtimeAnalyzer:
         self.audio_chunks: List[bytes] = []
         self.start_time = datetime.now()
         self.total_audio_duration = 0.0
+        self.accumulated_audio = bytearray()  # 文字起こし用バッファ
+        self.transcription_threshold = 16000 * 3  # 3秒分（16kHz * 2 bytes）
         
     async def analyze_audio_chunk(self, audio_data: bytes) -> Dict[str, Any]:
         """
@@ -60,8 +81,10 @@ class RealtimeAnalyzer:
                         emotion_result = {
                             "confidence": int(emotion_analysis.get("confidence_score", 50)),
                             "calmness": 100 - int(emotion_analysis.get("nervousness_score", 50)),
-                            "energy": emotion_analysis.get("energy_mean", 0),
-                            "pitch": emotion_analysis.get("pitch_mean", 0),
+                            "stability": int(emotion_analysis.get("voice_stability", 50)),
+                            "volume": int(emotion_analysis.get("volume_score", 50)),
+                            "speaking_rate": int(emotion_analysis.get("speaking_rate_score", 50)),
+                            "pitch": int(emotion_analysis.get("pitch_score", 50)),
                         }
                         
                         # 感情履歴に追加
@@ -74,23 +97,39 @@ class RealtimeAnalyzer:
                     emotion_result = {
                         "confidence": 70,
                         "calmness": 65,
-                        "energy": 0,
-                        "pitch": 0,
+                        "stability": 68,
+                        "volume": 60,
+                        "speaking_rate": 70,
+                        "pitch": 65,
                     }
             else:
                 # データが少ない場合はデフォルト値
                 emotion_result = {
                     "confidence": 70,
                     "calmness": 65,
-                    "energy": 0,
-                    "pitch": 0,
+                    "stability": 68,
+                    "volume": 60,
+                    "speaking_rate": 70,
+                    "pitch": 65,
                 }
+            
+            # 文字起こし処理
+            transcription_text = ""
+            self.accumulated_audio.extend(audio_data)
+            
+            # 一定量のデータが溜まったら文字起こし実行
+            if len(self.accumulated_audio) >= self.transcription_threshold:
+                transcription_text = await self._transcribe_audio(bytes(self.accumulated_audio))
+                if transcription_text:
+                    self.transcription_buffer.append(transcription_text)
+                # バッファをクリア（オーバーラップのために少し残す）
+                self.accumulated_audio = bytearray(self.accumulated_audio[-8000:])
             
             result = {
                 "type": "audio_analysis",
                 "timestamp": asyncio.get_event_loop().time(),
                 "audio_level": audio_level,
-                "transcription": "",  # TODO: Whisper でリアルタイム文字起こし
+                "transcription": transcription_text,
                 "emotion": emotion_result,
                 "keywords": list(self.keywords_detected),
             }
@@ -103,6 +142,61 @@ class RealtimeAnalyzer:
                 "type": "error",
                 "message": str(e)
             }
+    
+    async def _transcribe_audio(self, audio_data: bytes) -> str:
+        """
+        音声データを文字起こし
+        
+        Args:
+            audio_data: 音声バイナリ（Int16 PCM, 16kHz）
+            
+        Returns:
+            文字起こしテキスト
+        """
+        try:
+            model = get_whisper_model()
+            if model is None:
+                return ""
+            
+            # 一時ファイルに WAV 形式で保存
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+                
+                # PCM → WAV 変換（pydub使用）
+                from pydub import AudioSegment
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                audio_segment = AudioSegment(
+                    audio_array.tobytes(),
+                    frame_rate=16000,
+                    sample_width=2,
+                    channels=1
+                )
+                audio_segment.export(tmp_path, format="wav")
+            
+            try:
+                # Whisper で文字起こし
+                segments, _ = await asyncio.to_thread(
+                    model.transcribe, 
+                    tmp_path, 
+                    language="ja",
+                    beam_size=1,  # 速度優先
+                    vad_filter=True  # 無音部分をスキップ
+                )
+                
+                transcription = " ".join([segment.text.strip() for segment in segments])
+                logger.info(f"文字起こし成功: {transcription[:50]}...")
+                return transcription
+                
+            finally:
+                # 一時ファイル削除
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+                    
+        except Exception as e:
+            logger.warning(f"文字起こしエラー: {e}")
+            return ""
     
     async def analyze_video_frame(self, frame_data: bytes) -> Dict[str, Any]:
         """

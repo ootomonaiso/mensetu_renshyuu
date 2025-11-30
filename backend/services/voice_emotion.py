@@ -3,18 +3,20 @@
 """
 import librosa
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Union
+from io import BytesIO
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def analyze_voice_emotion(audio_path: str) -> Dict[str, Any]:
+def analyze_voice_emotion(audio_path: Union[str, BytesIO], sample_rate: int = 16000) -> Dict[str, Any]:
     """
     音声から感情状態を分析
     
     Args:
-        audio_path: 音声ファイルパス
+        audio_path: 音声ファイルパスまたはBytesIO (Int16 PCM data)
+        sample_rate: サンプルレート (デフォルト: 16000)
     
     Returns:
         {
@@ -29,7 +31,16 @@ def analyze_voice_emotion(audio_path: str) -> Dict[str, Any]:
     """
     try:
         # 音声ロード
-        y, sr = librosa.load(audio_path, sr=None)
+        if isinstance(audio_path, BytesIO):
+            # BytesIO から Int16 PCM データを読み込み
+            audio_path.seek(0)
+            audio_data = np.frombuffer(audio_path.read(), dtype=np.int16)
+            # -1.0 ~ 1.0 に正規化
+            y = audio_data.astype(np.float32) / 32768.0
+            sr = sample_rate
+        else:
+            # ファイルパスから読み込み
+            y, sr = librosa.load(audio_path, sr=None)
         
         logger.info("音声感情分析開始...")
         
@@ -120,15 +131,39 @@ def analyze_voice_emotion(audio_path: str) -> Dict[str, Any]:
         # 声の安定性: 総合的な評価
         voice_stability = 100 - nervousness_score
         
-        logger.info(f"音声感情分析完了: 自信度={confidence_score}, 緊張度={nervousness_score}")
+        # === 追加指標計算 ===
+        
+        # 声量スコア: RMS の平均値を0-100に正規化
+        energy_mean = float(np.mean(rms))
+        volume_score = min(100, int(energy_mean * 200))  # 適度な増幅
+        
+        # 話速スコア: 適度な話速かどうか
+        speaking_rate_score = 50
+        if 0.1 < speaking_rate_variance < 0.3:
+            speaking_rate_score = 80  # 適度な変動
+        elif speaking_rate_variance < 0.5:
+            speaking_rate_score = 65
+        
+        # ピッチスコア: 声の高さが適切か
+        pitch_score = 50
+        if 80 < pitch_mean < 250:  # 一般的な会話の範囲
+            pitch_score = 80
+            if 100 < pitch_mean < 200:
+                pitch_score = 90  # 理想的な範囲
+        
+        logger.info(f"音声感情分析完了: 自信度={confidence_score}, 緊張度={nervousness_score}, 声量={volume_score}")
         
         return {
             "confidence_score": int(confidence_score),
             "nervousness_score": int(nervousness_score),
             "voice_stability": int(voice_stability),
+            "volume_score": int(volume_score),
+            "speaking_rate_score": int(speaking_rate_score),
+            "pitch_score": int(pitch_score),
             "jitter": round(jitter, 2),
             "pitch_mean": round(pitch_mean, 1),
             "pitch_variance": round(pitch_variance, 1),
+            "energy_mean": round(energy_mean, 3),
             "energy_variance": round(energy_variance, 3),
             "mfcc_variance": round(mfcc_variance, 3),
             "speaking_rate_variance": round(speaking_rate_variance, 3)
@@ -140,9 +175,13 @@ def analyze_voice_emotion(audio_path: str) -> Dict[str, Any]:
             "confidence_score": 50,
             "nervousness_score": 50,
             "voice_stability": 50,
+            "volume_score": 50,
+            "speaking_rate_score": 50,
+            "pitch_score": 50,
             "jitter": 0.0,
             "pitch_mean": 0.0,
             "pitch_variance": 0.0,
+            "energy_mean": 0.0,
             "energy_variance": 0.0,
             "mfcc_variance": 0.0,
             "speaking_rate_variance": 0.0,
