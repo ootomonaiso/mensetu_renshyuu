@@ -57,6 +57,7 @@ export const LiveAnalysisCard = () => {
 
       // WebSocket 接続
       const sessionId = `session_${Date.now()}`
+      setSessionId(sessionId)
       const ws = new WebSocket(`ws://localhost:8000/ws/live-analysis/${sessionId}`)
       wsRef.current = ws
 
@@ -75,6 +76,11 @@ export const LiveAnalysisCard = () => {
         } else if (data.type === 'video_analysis') {
           if (data.posture) setPosture(data.posture)
           if (data.eye_contact) setEyeContact(data.eye_contact)
+        } else if (data.type === 'report_ready') {
+          if (data.report_url) {
+            setReportUrl(data.report_url)
+            console.log('レポート生成完了:', data.report_url)
+          }
         }
       }
 
