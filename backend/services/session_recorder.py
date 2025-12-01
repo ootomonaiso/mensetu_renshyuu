@@ -136,5 +136,3 @@ class SessionRecorder:
             "audio_bytes": self._audio_bytes_written,
             "video_frame_count": self._frame_count,
         }
-
-```
