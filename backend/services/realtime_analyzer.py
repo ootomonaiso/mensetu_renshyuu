@@ -11,10 +11,12 @@ import io
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import numpy as np
+import cv2
 import tempfile
 import os
 
 from backend.services.voice_emotion import analyze_voice_emotion
+from backend.services.session_recorder import SessionRecorder
 
 try:
     from backend.services.video_processors import PoseAnalyzer, EyeContactAnalyzer
@@ -48,7 +50,7 @@ def get_whisper_model():
 class RealtimeAnalyzer:
     """リアルタイム分析を管理するクラス"""
     
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, recorder: Optional[SessionRecorder] = None):
         self.session_id = session_id
         self.transcription_buffer: List[str] = []
         self.emotion_history: List[Dict[str, Any]] = []
@@ -66,6 +68,10 @@ class RealtimeAnalyzer:
         else:
             self.pose_analyzer = None
             self.eye_contact_analyzer = None
+
+        self.session_recorder = recorder
+        self.recording_info: Dict[str, Any] = {}
+        self._recording_finalized = False
         
     async def analyze_audio_chunk(self, audio_data: bytes) -> Dict[str, Any]:
         """
@@ -78,8 +84,10 @@ class RealtimeAnalyzer:
             分析結果（文字起こし、感情スコア、キーワード）
         """
         try:
-            # 音声チャンクを保存（後でレポート生成時に使用）
+            # 音声チャンクを保存（ログ + レポート用）
             self.audio_chunks.append(audio_data)
+            if self.session_recorder:
+                self.session_recorder.write_audio_chunk(audio_data)
             
             # 音声レベル計算
             audio_level = self._calculate_audio_level(audio_data)
@@ -253,6 +261,15 @@ class RealtimeAnalyzer:
         """
         try:
             # MediaPipe が利用可能な場合は実際に分析
+            if self.session_recorder:
+                try:
+                    # 録画用に生フレームを保存
+                    frame_array = cv2.imdecode(np.frombuffer(frame_data, np.uint8), cv2.IMREAD_COLOR)
+                except Exception:
+                    frame_array = None
+                if frame_array is not None:
+                    self.session_recorder.write_video_frame(frame_array)
+
             if VIDEO_ANALYSIS_AVAILABLE and self.pose_analyzer and self.eye_contact_analyzer:
                 # 並列処理で姿勢と視線を分析
                 posture_task = asyncio.create_task(
@@ -350,7 +367,7 @@ class RealtimeAnalyzer:
             avg_confidence = np.mean([e.get("confidence", 0) for e in self.emotion_history])
             avg_calmness = np.mean([e.get("calmness", 0) for e in self.emotion_history])
         
-        return {
+        summary = {
             "type": "summary",
             "session_id": self.session_id,
             "duration_seconds": duration,
@@ -361,6 +378,11 @@ class RealtimeAnalyzer:
             "emotion_sample_count": len(self.emotion_history),
             "audio_chunks_count": len(self.audio_chunks),
         }
+
+        if self.recording_info:
+            summary["recordings"] = self.recording_info
+
+        return summary
     
     async def generate_report(self, output_dir: str) -> Dict[str, str]:
         """
@@ -399,6 +421,7 @@ class RealtimeAnalyzer:
                 "keigo_score": 0,
                 "professionalism_score": summary["average_confidence"],
             },
+            "recordings": self.recording_info,
         }
         
         # Markdownレポート生成
@@ -413,3 +436,14 @@ class RealtimeAnalyzer:
             "report_path": str(report_path),
             "report_url": f"/reports/live_{self.session_id}.md",
         }
+
+    async def finalize_session(self) -> Dict[str, Any]:
+        """Close recorders safely (idempotent)."""
+        if self._recording_finalized:
+            return self.recording_info
+
+        if self.session_recorder:
+            self.recording_info = await asyncio.to_thread(self.session_recorder.finalize)
+
+        self._recording_finalized = True
+        return self.recording_info
