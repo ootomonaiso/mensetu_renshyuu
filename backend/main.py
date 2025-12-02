@@ -27,6 +27,8 @@ from backend.services.voice_emotion import analyze_voice_emotion, get_emotion_fe
 from backend.services.realtime_transcription import RealtimeTranscriber
 from backend.services.video_analysis import analyze_video
 from backend.services.realtime_analyzer import RealtimeAnalyzer
+from backend.services.session_recorder import SessionRecorder
+from backend.services.post_session_pipeline import run_post_session_pipeline
 
 # ロギング設定
 logging.basicConfig(
@@ -56,12 +58,14 @@ OUTPUT_DIR = Path("output")
 AUDIO_DIR = OUTPUT_DIR / "audio"
 REPORTS_DIR = OUTPUT_DIR / "reports"
 VIDEO_DIR = OUTPUT_DIR / "videos"
+SESSIONS_DIR = OUTPUT_DIR / "sessions"
 STATIC_DIR = Path("backend/static")
 
 # ディレクトリ作成
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 # 静的ファイル配信
@@ -627,7 +631,8 @@ async def websocket_live_analysis(websocket: WebSocket, session_id: str):
     await websocket.accept()
     active_connections[session_id] = websocket
     
-    analyzer = RealtimeAnalyzer(session_id)
+    session_recorder = SessionRecorder(session_id, SESSIONS_DIR)
+    analyzer = RealtimeAnalyzer(session_id, recorder=session_recorder)
     logger.info(f"リアルタイム分析開始: {session_id}")
     
     try:
@@ -660,17 +665,22 @@ async def websocket_live_analysis(websocket: WebSocket, session_id: str):
                     # セッション終了：サマリーとレポート生成
                     logger.info(f"セッション終了: {session_id}")
                     
-                    # サマリー送信
+                    recording_info = await analyzer.finalize_session()
                     summary = await analyzer.get_summary()
                     await websocket.send_json(summary)
-                    
-                    # レポート生成
+
+                    await websocket.send_json({
+                        "type": "processing",
+                        "message": "録画データを解析しています..."
+                    })
+
                     try:
-                        report_info = await analyzer.generate_report(str(REPORTS_DIR))
+                        report_info = await run_post_session_pipeline(session_id, recording_info, REPORTS_DIR)
                         await websocket.send_json({
                             "type": "report_ready",
                             "report_url": report_info["report_url"],
                             "report_path": report_info["report_path"],
+                            "video_analysis": report_info.get("video"),
                             "message": "レポートが生成されました"
                         })
                         logger.info(f"レポート生成完了: {report_info['report_path']}")
@@ -696,5 +706,6 @@ async def websocket_live_analysis(websocket: WebSocket, session_id: str):
     finally:
         if session_id in active_connections:
             del active_connections[session_id]
+        await analyzer.finalize_session()
         logger.info(f"リアルタイム分析終了: {session_id}")
 

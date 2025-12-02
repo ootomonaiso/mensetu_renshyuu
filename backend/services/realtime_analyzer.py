@@ -28,24 +28,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Whisper モデルの遅延ロード
-_whisper_model = None
-
-def get_whisper_model():
-    """Whisper モデルを取得（初回のみロード）"""
-    global _whisper_model
-    if _whisper_model is None:
-        try:
-            from faster_whisper import WhisperModel
-            logger.info("Whisper モデルをロード中...")
-            # small モデルで精度向上（base より正確だが少し重い）
-            _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-            logger.info("Whisper モデルのロード完了")
-        except Exception as e:
-            logger.error(f"Whisper モデルのロード失敗: {e}")
-            _whisper_model = None
-    return _whisper_model
-
 
 class RealtimeAnalyzer:
     """リアルタイム分析を管理するクラス"""
@@ -58,11 +40,11 @@ class RealtimeAnalyzer:
         self.audio_chunks: List[bytes] = []
         self.start_time = datetime.now()
         self.total_audio_duration = 0.0
-        self.accumulated_audio = bytearray()  # 文字起こし用バッファ
-        self.transcription_threshold = 16000 * 2 * 5  # 5秒分（16kHz * 2 bytes * 5 sec）
         
         # 動画分析プロセッサ（利用可能な場合のみ）
-        if VIDEO_ANALYSIS_AVAILABLE:
+        self.enable_realtime_video_analysis = False  # 映像解析はレポート出力時に実施
+
+        if VIDEO_ANALYSIS_AVAILABLE and self.enable_realtime_video_analysis:
             self.pose_analyzer = PoseAnalyzer()
             self.eye_contact_analyzer = EyeContactAnalyzer()
         else:
@@ -138,26 +120,11 @@ class RealtimeAnalyzer:
                     "pitch": 0,
                 }
             
-            # 文字起こし処理
-            transcription_text = ""
-            self.accumulated_audio.extend(audio_data)
-            
-            # 一定量のデータが溜まったら文字起こし実行
-            if len(self.accumulated_audio) >= self.transcription_threshold:
-                transcription_text = await self._transcribe_audio(bytes(self.accumulated_audio))
-                if transcription_text:
-                    self.transcription_buffer.append(transcription_text)
-                # バッファをクリア（オーバーラップのために2秒分残す）
-                overlap_size = 16000 * 2 * 2  # 2秒分
-                self.accumulated_audio = bytearray(self.accumulated_audio[-overlap_size:])
-            
             result = {
                 "type": "audio_analysis",
                 "timestamp": asyncio.get_event_loop().time(),
                 "audio_level": audio_level,
-                "transcription": transcription_text,
                 "emotion": emotion_result,
-                "keywords": list(self.keywords_detected),
             }
             
             return result
@@ -169,86 +136,7 @@ class RealtimeAnalyzer:
                 "message": str(e)
             }
     
-    async def _transcribe_audio(self, audio_data: bytes) -> str:
-        """
-        音声データを文字起こし
-        
-        Args:
-            audio_data: 音声バイナリ（Int16 PCM, 16kHz）
-            
-        Returns:
-            文字起こしテキスト
-        """
-        try:
-            model = get_whisper_model()
-            if model is None:
-                return ""
-            
-            # PCM データを numpy 配列に変換
-            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            
-            # 音声の音量を確認（無音チェック）
-            rms = np.sqrt(np.mean(audio_array ** 2))
-            if rms < 0.01:  # 音量が極端に小さい場合はスキップ
-                logger.info("音声が小さすぎるため文字起こしをスキップ")
-                return ""
-            
-            # 一時ファイルに WAV 形式で保存
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-                
-                # numpy array → pydub AudioSegment → WAV
-                from pydub import AudioSegment
-                audio_int16 = (audio_array * 32768).astype(np.int16)
-                audio_segment = AudioSegment(
-                    audio_int16.tobytes(),
-                    frame_rate=16000,
-                    sample_width=2,
-                    channels=1
-                )
-                
-                # 音量正規化（小さすぎる音声を増幅）
-                audio_segment = audio_segment.normalize()
-                
-                audio_segment.export(tmp_path, format="wav")
-            
-            try:
-                # Whisper で文字起こし（パラメータ最適化）
-                segments, info = await asyncio.to_thread(
-                    model.transcribe, 
-                    tmp_path, 
-                    language="ja",
-                    beam_size=5,  # 精度重視（1→5）
-                    best_of=5,  # 候補数を増やす
-                    temperature=0.0,  # 確定的な出力
-                    vad_filter=True,  # 無音部分をスキップ
-                    vad_parameters=dict(
-                        min_silence_duration_ms=500,  # 500ms以上の無音を検出
-                        threshold=0.3,  # VAD閾値（低めで敏感に）
-                    ),
-                    condition_on_previous_text=False,  # 前の文脈に依存しない
-                )
-                
-                transcription = " ".join([segment.text.strip() for segment in segments])
-                
-                if transcription:
-                    logger.info(f"文字起こし成功 [{info.language}, {info.language_probability:.2f}]: {transcription}")
-                else:
-                    logger.info("文字起こし結果が空です（無音またはノイズのみ）")
-                
-                return transcription
-                
-            finally:
-                # 一時ファイル削除
-                try:
-                    os.unlink(tmp_path)
-                except:
-                    pass
-                    
-        except Exception as e:
-            logger.warning(f"文字起こしエラー: {e}")
-            return ""
-    
+
     async def analyze_video_frame(self, frame_data: bytes) -> Dict[str, Any]:
         """
         映像フレームをリアルタイム分析（MediaPipe）
@@ -270,7 +158,7 @@ class RealtimeAnalyzer:
                 if frame_array is not None:
                     self.session_recorder.write_video_frame(frame_array)
 
-            if VIDEO_ANALYSIS_AVAILABLE and self.pose_analyzer and self.eye_contact_analyzer:
+            if self.enable_realtime_video_analysis and VIDEO_ANALYSIS_AVAILABLE and self.pose_analyzer and self.eye_contact_analyzer:
                 # 並列処理で姿勢と視線を分析
                 posture_task = asyncio.create_task(
                     self.pose_analyzer.analyze(frame_data)
@@ -302,18 +190,11 @@ class RealtimeAnalyzer:
                     "eye_contact": eye_contact_result,
                 }
             else:
-                # MediaPipe が利用不可の場合はダミー値
+                # リアルタイム解析は行わず、録画状況のみ返す
                 result = {
-                    "type": "video_analysis",
+                    "type": "video_recording",
                     "timestamp": asyncio.get_event_loop().time(),
-                    "posture": {
-                        "score": 80,
-                        "feedback": "姿勢分析は利用できません（MediaPipe未インストール）",
-                    },
-                    "eye_contact": {
-                        "score": 70,
-                        "feedback": "視線分析は利用できません（MediaPipe未インストール）",
-                    },
+                    "frame_captured": frame_array is not None,
                 }
             
             return result
@@ -355,7 +236,7 @@ class RealtimeAnalyzer:
         セッション全体のサマリーを取得
         
         Returns:
-            統計情報（平均感情スコア、キーワード一覧など）
+            統計情報（平均感情スコア、録画情報など）
         """
         end_time = datetime.now()
         duration = (end_time - self.start_time).total_seconds()
@@ -371,8 +252,6 @@ class RealtimeAnalyzer:
             "type": "summary",
             "session_id": self.session_id,
             "duration_seconds": duration,
-            "total_transcription": " ".join(self.transcription_buffer),
-            "keywords": list(self.keywords_detected),
             "average_confidence": float(avg_confidence),
             "average_calmness": float(avg_calmness),
             "emotion_sample_count": len(self.emotion_history),

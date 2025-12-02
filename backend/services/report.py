@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 def generate_markdown_report(
-    report_data: Dict[str, Any],
-    output_path: str
+    report_data: Dict[str, Any] = None,
+    output_path: str = "",
+    **legacy_kwargs: Any,
 ) -> None:
     """
     Markdown レポートを生成（リアルタイム分析用）
@@ -22,11 +23,19 @@ def generate_markdown_report(
         output_path: 出力ファイルパス
     """
     try:
-        # 後方互換性のため、旧形式の引数もサポート
-        if isinstance(report_data, str):
-            # 旧形式: output_path が第1引数
+        # 後方互換性: report_data が dict 以外、または legacy kwargs がある場合
+        if not isinstance(report_data, dict) or legacy_kwargs:
             logger.warning("旧形式の generate_markdown_report 呼び出しを検出しました")
-            return _generate_markdown_report_legacy(*[report_data, output_path] + list(locals().values())[2:])
+            return _generate_markdown_report_legacy(
+                output_path=output_path if isinstance(report_data, dict) else report_data,
+                timestamp=legacy_kwargs.get("timestamp"),
+                filename=legacy_kwargs.get("filename", "リアルタイム分析"),
+                transcript=legacy_kwargs.get("transcript", {}),
+                audio_features=legacy_kwargs.get("audio_features", {}),
+                ai_analysis=legacy_kwargs.get("ai_analysis", {}),
+                voice_emotion=legacy_kwargs.get("voice_emotion", {}),
+                emotion_feedback=legacy_kwargs.get("emotion_feedback"),
+            )
         
         # テンプレート読み込み
         template_path = Path(__file__).parent.parent / "templates" / "report.md.j2"
@@ -46,9 +55,10 @@ def generate_markdown_report(
         filename = report_data.get("filename", "リアルタイム分析")
         
         transcript = report_data.get("transcription", {})
-        audio_features = report_data.get("audio_features", {})
-        ai_analysis = report_data.get("ai_analysis", {})
-        voice_emotion = report_data.get("voice_emotion", {})
+        audio_features = report_data.get("audio", report_data.get("audio_features", {}))
+        ai_analysis = report_data.get("ai", report_data.get("ai_analysis", {}))
+        voice_emotion = report_data.get("emotion", report_data.get("voice_emotion", {}))
+        video_analysis = report_data.get("video", report_data.get("video_analysis", {}))
         
         # 話速の計算
         if "duration" in audio_features and audio_features["duration"] > 0:
@@ -64,7 +74,8 @@ def generate_markdown_report(
             audio=audio_features,
             ai=ai_analysis,
             emotion=voice_emotion,
-            emotion_feedback=voice_emotion.get("feedback", "")
+            emotion_feedback=report_data.get("emotion_feedback", voice_emotion.get("feedback", "")),
+            video=video_analysis,
         )
         
         # ファイル出力

@@ -43,6 +43,7 @@ class SessionRecorder:
         self._metadata: Dict[str, Any] = {
             "session_id": session_id,
             "started_at": datetime.utcnow().isoformat(),
+            "session_dir": str(self.session_dir),
         }
 
     # ------------------------------------------------------------------

@@ -98,6 +98,26 @@
 
 ---
 
+## 🎥 映像姿勢・視線分析
+
+{% if video.available %}
+| 指標 | スコア | コメント |
+|------|--------|-----------|
+| 姿勢スコア | {{ video.posture_score|default('N/A') }} | {% if video.posture_score %}{% if video.posture_score > 80 %}姿勢がとても安定しています{% elif video.posture_score > 60 %}概ね良好です{% else %}背筋と肩のラインを意識しましょう{% endif %}{% else %}データ不足のため算出できません{% endif %} |
+| 視線スコア | {{ video.eye_contact_score|default('N/A') }} | {% if video.eye_contact_score %}{% if video.eye_contact_score > 80 %}カメラをしっかり見られています{% elif video.eye_contact_score > 60 %}ほぼカメラを捉えています{% else %}目線が逸れがちです。面接官を見る意識を持ちましょう{% endif %}{% else %}データ不足のため算出できません{% endif %} |
+
+{% if video.overlay_image %}
+![骨格オーバーレイ]({{ video.overlay_image }})
+{% endif %}
+
+解析対象フレーム数: {{ video.frames_analyzed }} / コメント: {{ video.message }}
+
+{% else %}
+映像分析は実行されていません。理由: {{ video.message|default('映像データが存在しません。') }}
+{% endif %}
+
+---
+
 ## 💬 教師コメント
 
 <!-- ここに教師がコメントを追加してください -->
