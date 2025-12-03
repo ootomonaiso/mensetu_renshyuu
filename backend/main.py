@@ -394,6 +394,7 @@ async def analyze_interview(file: UploadFile = File(...)) -> Dict[str, Any]:
             "status": "success",
             "report_url": f"/reports/{report_filename}",
             "report_path": str(report_path),
+            "report_filename": report_filename,
             "summary": {
                 "transcript_length": len(transcript_result["text"]),
                 "speech_rate": audio_features.get("speech_rate", 0),
@@ -435,14 +436,182 @@ async def analyze_video_endpoint(file: UploadFile = File(...)) -> Dict[str, Any]
             f.write(content)
         logger.info(f"動画ファイル保存完了: {video_path} ({len(content)} bytes)")
 
-        # Phase 4 予定のビデオ分析スタブを呼び出し
+        # Phase 4 実装済みビデオ分析を実行
         analysis_result = analyze_video(str(video_path))
 
         preview_url = f"/videos/{video_filename}"
 
         return {
-            "status": "pending",
-            "message": "ビデオ分析は Phase 4 で本格対応予定です。アップロードした動画は安全に保存されています。",
+            "status": "success",
+            "message": "ビデオ分析が完了しました (Phase 4 実装済み)",
+            "preview_url": preview_url,
+            "analysis": analysis_result,
+        }
+
+    except Exception as e:
+        logger.error(f"動画分析エラー: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"動画分析に失敗しました: {str(e)}")
+
+
+@app.get("/api/reports")
+async def list_reports() -> Dict[str, Any]:
+    """
+    レポート一覧を取得
+    
+    Returns:
+        レポートファイルのリスト
+    """
+    try:
+        reports = []
+        for report_file in REPORTS_DIR.glob("*.md"):
+            stat = report_file.stat()
+            reports.append({
+                "filename": report_file.name,
+                "url": f"/reports/{report_file.name}",
+                "size": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+        
+        # 新しい順にソート
+        reports.sort(key=lambda x: x["modified_at"], reverse=True)
+        
+        return {
+            "status": "success",
+            "count": len(reports),
+            "reports": reports
+        }
+    except Exception as e:
+        logger.error(f"レポート一覧取得エラー: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"レポート一覧の取得に失敗しました: {str(e)}")
+
+
+@app.get("/api/reports/download/{filename}")
+async def download_report(filename: str):
+    """
+    レポートをダウンロードし、ダウンロード後にサーバーから削除
+    
+    Args:
+        filename: レポートファイル名
+    
+    Returns:
+        ファイルレスポンス
+    """
+    try:
+        report_path = REPORTS_DIR / filename
+        
+        if not report_path.exists():
+            raise HTTPException(status_code=404, detail="レポートが見つかりません")
+        
+        # ファイル名のセキュリティチェック
+        if not report_path.is_relative_to(REPORTS_DIR):
+            raise HTTPException(status_code=400, detail="不正なファイルパスです")
+        
+        logger.info(f"レポートダウンロード: {filename}")
+        
+        # ファイルをレスポンスとして返す
+        # background_tasks を使ってダウンロード後に削除
+        from fastapi import BackgroundTasks
+        
+        def delete_file(path: Path):
+            try:
+                if path.exists():
+                    path.unlink()
+                    logger.info(f"レポート削除完了: {path.name}")
+            except Exception as e:
+                logger.error(f"レポート削除エラー: {e}")
+        
+        background_tasks = BackgroundTasks()
+        background_tasks.add_task(delete_file, report_path)
+        
+        return FileResponse(
+            path=str(report_path),
+            filename=filename,
+            media_type="text/markdown",
+            background=background_tasks,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"レポートダウンロードエラー: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"ダウンロードに失敗しました: {str(e)}")
+
+
+@app.delete("/api/reports/{filename}")
+async def delete_report(filename: str) -> Dict[str, Any]:
+    """
+    レポートを削除 (手動削除用)
+    
+    Args:
+        filename: レポートファイル名
+    
+    Returns:
+        削除結果
+    """
+    try:
+        report_path = REPORTS_DIR / filename
+        
+        if not report_path.exists():
+            raise HTTPException(status_code=404, detail="レポートが見つかりません")
+        
+        # ファイル名のセキュリティチェック
+        if not report_path.is_relative_to(REPORTS_DIR):
+            raise HTTPException(status_code=400, detail="不正なファイルパスです")
+        
+        report_path.unlink()
+        logger.info(f"レポート削除: {filename}")
+        
+        return {
+            "status": "success",
+            "message": f"レポート '{filename}' を削除しました"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"レポート削除エラー: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"削除に失敗しました: {str(e)}")
+
+
+@app.post("/api/video/analyze")
+async def analyze_video_endpoint_old(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    動画ファイルを受け取り、将来のビデオ分析処理へ連携するためのプレースホルダ API
+
+    Phase 4 で実装予定の MediaPipe 解析に備え、現時点ではファイル保存とスタブ分析のみ行う。
+    """
+    try:
+        allowed_extensions = {".mp4", ".mov", ".webm", ".mkv"}
+        file_ext = Path(file.filename).suffix.lower()
+
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"サポートされていない動画形式です。対応形式: {', '.join(sorted(allowed_extensions))}"
+            )
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        video_filename = f"{timestamp}_{file.filename}"
+        video_path = VIDEO_DIR / video_filename
+
+        logger.info(f"動画ファイル保存開始: {video_filename}")
+        with open(video_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        logger.info(f"動画ファイル保存完了: {video_path} ({len(content)} bytes)")
+
+        # Phase 4 実装済みビデオ分析を実行
+        analysis_result = analyze_video(str(video_path))
+
+        preview_url = f"/videos/{video_filename}"
+
+        return {
+            "status": "success",
+            "message": "ビデオ分析が完了しました (Phase 4 実装済み)",
             "preview_url": preview_url,
             "analysis": analysis_result,
         }
@@ -452,23 +621,6 @@ async def analyze_video_endpoint(file: UploadFile = File(...)) -> Dict[str, Any]
     except Exception as e:
         logger.error(f"動画分析エラー: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"動画の処理に失敗しました: {str(e)}")
-
-
-@app.get("/api/reports")
-async def list_reports():
-    """
-    生成されたレポート一覧を取得
-    """
-    reports = []
-    for report_file in REPORTS_DIR.glob("*.md"):
-        reports.append({
-            "filename": report_file.name,
-            "url": f"/reports/{report_file.name}",
-            "created_at": datetime.fromtimestamp(report_file.stat().st_mtime).isoformat()
-        })
-    
-    reports.sort(key=lambda x: x["created_at"], reverse=True)
-    return {"reports": reports, "total": len(reports)}
 
 
 @app.get("/health")

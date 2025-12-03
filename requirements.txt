@@ -30,9 +30,9 @@ pytest>=7.4.0
 pytest-asyncio>=0.21.0
 httpx>=0.25.0  # FastAPI TestClient 用
 
-# === Video Analysis (Phase 4) ===
+# === Video Analysis (Phase 3-4: 実装完了) ===
 opencv-python>=4.8.0
-mediapipe>=0.10.0; python_version < "3.12"
+mediapipe>=0.10.0
 
 # === 将来的な拡張 (Phase 2+) ===
 # weasyprint>=60.0  # PDF 生成

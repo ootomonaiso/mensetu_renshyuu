@@ -81,65 +81,94 @@ uvicorn backend.main:app --reload
 
 ブラウザで http://127.0.0.1:8000 にアクセスし、音声ファイル (mp3/wav/m4a) をアップロード。
 
-### 3. レポート確認
+### 3. リアルタイム面接練習
+
+http://127.0.0.1:8000/static/realtime.html でリアルタイム録音・分析が可能。
+
+### 4. レポート確認
 
 `output/reports/` ディレクトリに Markdown レポートが生成されます。
+フロントエンド (http://localhost:5173) でダウンロード可能。
 
 ## 実装状況
 
-### Phase 1 (簡易版 MVP) - 実装完了 ✅
+### Phase 1 (簡易版 MVP) - ✅ 実装完了
 
 - ✅ FastAPI サーバー (`backend/main.py`)
 - ✅ 音声アップロード API (`POST /api/analyze`)
 - ✅ faster-whisper 文字起こし
 - ✅ librosa 音響分析 (話速、音量、ポーズ)
-- ✅ **音声感情分析 (声の震え・緊張度検出)** 🆕
+- ✅ **音声感情分析 (声の震え・緊張度検出)**
 - ✅ Gemini API 連携 (キーワード・敬語・感情)
 - ✅ Markdown レポート生成 (教師コメント欄付き)
 - ✅ 簡易 Web UI (HTML フォーム)
 
-### Phase 2 (リアルタイム機能) - 計画中
+### Phase 2 (リアルタイム機能) - ✅ 実装完了
 
-- ⏳ WebSocket によるリアルタイム音声ストリーミング
-- ⏳ リアルタイム文字起こし表示
-- ⏳ 発話者識別 (教師/生徒)
-- ⏳ 教師メモ機能 (タイムスタンプ付き)
+- ✅ WebSocket によるリアルタイム音声ストリーミング
+- ✅ リアルタイム文字起こし表示
+- ✅ リアルタイム音響・感情分析
+- ✅ セッション録音・録画機能
+- ✅ ポストセッション分析パイプライン
 
-### Phase 3 (データ管理) - 計画中
+### Phase 3 (ビデオ分析基盤) - ✅ 実装完了
 
-- ⏳ セッション履歴管理 (SQLite)
-- ⏳ スコア推移グラフ
-- ⏳ PDF 出力 (WeasyPrint)
+- ✅ ビデオ録画・保存機能
+- ✅ OpenCV + MediaPipe 基盤実装
+- ✅ 骨格検出・視線分析の基礎
 
-### Phase 4 (映像分析) - 将来実装 🎥
+### Phase 4 (高度なビデオ分析) - ✅ 実装完了 🎥
 
-- ⏳ **ブラウザカメラでビデオ録画**
-- ⏳ **表情分析**: 笑顔・緊張・困惑の検出 (MediaPipe Face Mesh)
-- ⏳ **視線追跡**: アイコンタクトの頻度・方向 (MediaPipe Face Detection)
-- ⏳ **姿勢分析**: 猫背・前傾・手の動き (MediaPipe Pose)
-- ⏳ **ジェスチャー検出**: 髪を触る・手を組むなどの癖 (MediaPipe Hands)
-- ⏳ **統合レポート**: 音声+映像+感情の総合評価
+- ✅ **表情分析**: 笑顔・緊張・困惑の検出 (MediaPipe Face Mesh)
+- ✅ **視線追跡**: アイコンタクトの頻度・方向 (MediaPipe Face Detection)
+- ✅ **姿勢分析**: 猫背・前傾・手の動き (MediaPipe Pose)
+- ✅ **ジェスチャー検出**: 髪を触る・手を組むなどの癖 (MediaPipe Hands)
+- ✅ **統合レポート**: 音声+映像+感情の総合評価
 
-## プロジェクト構造 (予定)
+### 追加機能 - ✅ 実装完了
+
+- ✅ **レポートダウンロード機能**: ダウンロード後自動削除
+- ✅ **レポート管理 API**: 一覧取得・削除
+- ✅ **React フロントエンド**: レポート一覧・ダウンロード UI
+
+## プロジェクト構造
 
 ```
 mensetu_renshyuu/
 ├── backend/
-│   ├── main.py              # FastAPI サーバー
+│   ├── main.py              # ✅ FastAPI サーバー (881 lines)
 │   ├── services/
-│   │   ├── transcription.py # faster-whisper
-│   │   ├── audio_analysis.py # librosa
-│   │   ├── ai_analysis.py   # Gemini API
-│   │   └── report.py        # Markdown 生成
+│   │   ├── transcription.py        # ✅ faster-whisper
+│   │   ├── audio_analysis.py       # ✅ librosa
+│   │   ├── voice_emotion.py        # ✅ 音声感情分析
+│   │   ├── ai_analysis.py          # ✅ Gemini API
+│   │   ├── report.py               # ✅ Markdown 生成
+│   │   ├── video_analysis.py       # ✅ MediaPipe 分析 (Phase 4)
+│   │   ├── video_processors.py     # ✅ 動画処理
+│   │   ├── realtime_transcription.py # ✅ リアルタイム文字起こし
+│   │   ├── realtime_analyzer.py    # ✅ リアルタイム分析
+│   │   ├── session_recorder.py     # ✅ セッション記録
+│   │   └── post_session_pipeline.py # ✅ セッション後分析
+│   ├── static/
+│   │   └── realtime.html    # ✅ リアルタイム面接 UI
 │   └── templates/
-│       └── report.md.j2     # レポートテンプレート
+│       └── report.md.j2     # ✅ レポートテンプレート
+├── frontend/                # ✅ React + TypeScript + Vite
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── audio-recorder-card.tsx    # ✅ 音声録音
+│   │   │   ├── video-recorder-card.tsx    # ✅ 動画録画
+│   │   │   ├── live-analysis-card.tsx     # ✅ リアルタイム分析表示
+│   │   │   └── report-list.tsx            # ✅ レポート一覧・ダウンロード
+│   │   └── lib/
+│   │       └── api.ts       # ✅ API クライアント
 ├── output/
-│   ├── audio/               # アップロードした音声
-│   └── reports/             # 生成した Markdown
+│   ├── audio/               # 音声ファイル保存先
+│   ├── reports/             # ✅ 生成された Markdown レポート
+│   ├── videos/              # 動画ファイル保存先
+│   └── sessions/            # ✅ セッションデータ
 ├── .env                     # API キー
-├── requirements.txt         # 依存パッケージ
-├── plan.md                  # 開発計画
-├── requirements.md          # 要件定義書
+├── requirements.txt         # ✅ 依存パッケージ (MediaPipe 追加)
 └── README.md
 ```
 

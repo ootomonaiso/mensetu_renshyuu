@@ -1,4 +1,3 @@
-"""Session-level audio/video recording utilities."""
 from __future__ import annotations
 
 import json
@@ -12,7 +11,6 @@ import numpy as np
 
 
 class SessionRecorder:
-    """Record raw audio/video streams per session for later analysis."""
 
     def __init__(
         self,

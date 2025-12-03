@@ -19,11 +19,14 @@ const reportSummarySchema = z.object({
   filename: z.string(),
   url: z.string(),
   created_at: z.string(),
+  size: z.number(),
+  modified_at: z.string().optional(),
 })
 
 const reportListSchema = z.object({
+  status: z.string(),
+  count: z.number(),
   reports: z.array(reportSummarySchema),
-  total: z.number(),
 })
 
 const videoUploadSchema = z.object({
@@ -94,5 +97,39 @@ export async function uploadVideoFile(blob: Blob, filename: string): Promise<Vid
 export async function fetchReports() {
   const response = await fetch(`${API_BASE}/api/reports`)
   const json = await handleResponse<unknown>(response, 'レポート一覧の取得に失敗しました')
-  return reportListSchema.parse(json)
+  const data = reportListSchema.parse(json)
+  return {
+    reports: data.reports,
+    total: data.count,
+  }
+}
+
+export async function downloadReport(filename: string) {
+  const response = await fetch(`${API_BASE}/api/reports/download/${encodeURIComponent(filename)}`)
+  
+  if (!response.ok) {
+    throw new Error('ダウンロードに失敗しました')
+  }
+  
+  const blob = await response.blob()
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  window.URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+}
+
+export async function deleteReport(filename: string) {
+  const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+  })
+  
+  if (!response.ok) {
+    throw new Error('削除に失敗しました')
+  }
+  
+  return await response.json()
 }
