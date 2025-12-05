@@ -1,0 +1,13 @@
+# Flask専用の依存パッケージ
+flask>=3.0.0
+flask-sock>=0.7.0
+python-dotenv>=1.0.0
+
+# 音声処理
+faster-whisper>=0.9.0
+librosa>=0.10.1
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# レポート生成
+jinja2>=3.1.2
