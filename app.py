@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from src.database.models import init_db, get_db, Interview
 from src.audio.transcriber import Transcriber
-from src.audio.diarization import Diarizer
+# Diarizer は遅延読み込み(起動時間短縮のため)
 from src.audio.analyzer import AudioAnalyzer
 from src.ai.corrector import TextCorrector
 from src.report.generator import ReportGenerator
@@ -54,6 +54,7 @@ def init_modules():
     if diarizer is None:
         print("Initializing pyannote.audio...")
         try:
+            from src.audio.diarization import Diarizer
             diarizer = Diarizer()
         except Exception as e:
             print(f"Warning: Diarizer initialization failed: {e}")

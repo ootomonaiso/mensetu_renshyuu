@@ -1,17 +1,17 @@
 """
 pyannote.audio を使用した話者分離
 """
-# torchaudio 2.9+ との互換性のためのパッチ
-import torchaudio
-if not hasattr(torchaudio, 'set_audio_backend'):
-    # set_audio_backend は torchaudio 2.9 で削除されたので、ダミー関数を追加
-    torchaudio.set_audio_backend = lambda x: None
-
-from pyannote.audio import Pipeline
 import torch
 import os
 from typing import List, Dict
 from dotenv import load_dotenv
+
+# torchaudio 2.0+ 互換性対応: set_audio_backend が廃止されたため、ダミー関数を追加
+import torchaudio
+if not hasattr(torchaudio, 'set_audio_backend'):
+    torchaudio.set_audio_backend = lambda x: None
+
+from pyannote.audio import Pipeline
 
 load_dotenv()
 
