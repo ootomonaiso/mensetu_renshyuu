@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>面接練習レポート支援ツール</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎤 面接練習レポート支援ツール</h1>
+            <p>音声を録音して、AIによる分析とフィードバックを受けましょう</p>
+        </header>
+
+        <main>
+            <!-- 録音セクション -->
+            <section class="card">
+                <h2>📹 録音</h2>
+                <div class="recording-controls">
+                    <button id="startRecord" class="btn btn-primary">
+                        <span class="icon">●</span> 録音開始
+                    </button>
+                    <button id="stopRecord" class="btn btn-danger" disabled>
+                        <span class="icon">■</span> 録音停止
+                    </button>
+                    <button id="uploadAudio" class="btn btn-success" disabled>
+                        <span class="icon">📤</span> アップロード & 分析
+                    </button>
+                </div>
+                <div id="recordingStatus" class="status-message"></div>
+                <div id="recordingTime" class="recording-time">00:00</div>
+                
+                <!-- 音声プレビュー -->
+                <div id="audioPreview" class="audio-preview" style="display: none;">
+                    <h3>録音プレビュー</h3>
+                    <audio id="audioPlayer" controls></audio>
+                </div>
+            </section>
+
+            <!-- または既存ファイルアップロード -->
+            <section class="card">
+                <h2>📁 ファイルアップロード</h2>
+                <div class="upload-area" id="dropZone">
+                    <p>音声ファイルをドラッグ&ドロップ</p>
+                    <p>または</p>
+                    <input type="file" id="fileInput" accept="audio/*" style="display: none;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+                        ファイルを選択
+                    </button>
+                </div>
+                <div id="fileName" class="file-name"></div>
+            </section>
+
+            <!-- 処理状況 -->
+            <section class="card" id="processingSection" style="display: none;">
+                <h2>⚙️ 処理状況</h2>
+                <div id="processingStatus" class="processing-status">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <p id="processingMessage">処理中...</p>
+                </div>
+            </section>
+
+            <!-- 結果表示 -->
+            <section class="card" id="resultSection" style="display: none;">
+                <h2>📊 分析結果</h2>
+                <div id="resultContent"></div>
+                <button id="viewReport" class="btn btn-primary" style="display: none;">
+                    レポートを表示
+                </button>
+            </section>
+
+            <!-- 過去の面接一覧 -->
+            <section class="card">
+                <h2>📝 過去の面接記録</h2>
+                <div id="interviewList" class="interview-list">
+                    <p>読み込み中...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>© 2025 面接練習レポート支援ツール - Powered by Whisper, Ollama, librosa</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

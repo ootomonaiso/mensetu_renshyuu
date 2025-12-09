@@ -1,0 +1,38 @@
+# Environment
+.env
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Data
+data/uploads/*
+data/reports/*
+!data/uploads/.gitkeep
+!data/reports/.gitkeep
+data/*.db
+
+# Models (downloaded at runtime)
+models/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+.env
+.env.example
