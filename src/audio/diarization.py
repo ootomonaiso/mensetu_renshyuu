@@ -5,11 +5,26 @@ import torch
 import os
 from typing import List, Dict
 from dotenv import load_dotenv
+import librosa
+import soundfile as sf
+import tempfile
 
 # torchaudio 2.0+ 互換性対応: set_audio_backend が廃止されたため、ダミー関数を追加
 import torchaudio
 if not hasattr(torchaudio, 'set_audio_backend'):
     torchaudio.set_audio_backend = lambda x: None
+
+# huggingface_hub 互換性対応: use_auth_token を token にマッピング
+import huggingface_hub
+original_hf_hub_download = huggingface_hub.hf_hub_download
+
+def patched_hf_hub_download(*args, use_auth_token=None, token=None, **kwargs):
+    """use_auth_token を token に変換するパッチ"""
+    if use_auth_token is not None and token is None:
+        token = use_auth_token
+    return original_hf_hub_download(*args, token=token, **kwargs)
+
+huggingface_hub.hf_hub_download = patched_hf_hub_download
 
 from pyannote.audio import Pipeline
 
@@ -27,6 +42,9 @@ class Diarizer:
             raise ValueError("HuggingFace token is required. Set HUGGINGFACE_TOKEN in .env")
         
         print("Loading pyannote.audio pipeline...")
+        # 環境変数でトークンを設定(huggingface_hub 新バージョン対応)
+        os.environ["HF_TOKEN"] = self.hf_token
+        
         self.pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             use_auth_token=self.hf_token
@@ -52,11 +70,28 @@ class Diarizer:
         """
         print(f"Diarizing: {audio_path}")
         
-        # 話者分離実行
-        diarization = self.pipeline(
-            audio_path,
-            num_speakers=num_speakers
-        )
+        # 音声ファイルをlibrosaで読み込んで一時ファイルに保存
+        # これによりフォーマットの問題を回避
+        try:
+            y, sr = librosa.load(audio_path, sr=16000)
+            
+            # 一時ファイルに保存
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+                sf.write(tmp.name, y, sr)
+                tmp_path = tmp.name
+            
+            # 話者分離実行
+            diarization = self.pipeline(
+                tmp_path,
+                num_speakers=num_speakers
+            )
+            
+            # 一時ファイル削除
+            os.unlink(tmp_path)
+            
+        except Exception as e:
+            print(f"Error in diarization: {e}")
+            return []
         
         # 結果を整形
         segments = []
