@@ -1,184 +1,295 @@
-# 圧勝面接練習システム (簡易版 MVP)
+# 面接練習レポート支援ツール
 
-音声ファイルをアップロードして、AI 分析結果を Markdown レポートで出力するシンプルな面接練習支援ツール。
+教師と生徒の面接練習を録音・分析し、フィードバックレポートを生成する完全無料のローカル実行ツールです。
+
+## 機能
+
+- 🎤 **音声録音**: ブラウザから直接録音
+- 👥 **話者分離**: 教師と生徒の音声を自動識別
+- 📝 **文字起こし**: 日本語音声をテキスト化
+- ✍️ **日本語補正**: AI による文法・敬語のチェック
+- 🎵 **音声分析**: ピッチ、音量、話速、声のトーンを分析
+- 📊 **レポート生成**: 分析結果をHTML/PDFで出力
 
 ## 特徴
 
-- 🎤 **音声分析**: faster-whisper で文字起こし + librosa で音響分析
-- 🧠 **音声感情分析**: 声の震え・トーン変動から緊張度・自信度を検出
-- 🤖 **AI 評価**: Gemini API でキーワード抽出、敬語チェック、感情分析
-- 📝 **Markdown レポート**: 教師がコメントを追加できる形式で出力
-- 🔒 **ローカル完結**: DB/認証不要、音声ファイルと分析結果のみ保存
-- 🚀 **シンプル構成**: FastAPI のみ、数分でセットアップ完了
-- 📹 **ビデオ分析 (Phase 4)**: カメラ映像から表情・視線・姿勢を分析 (将来実装)
+- ✅ **完全無料**: API料金ゼロ
+- 🔒 **プライバシー保護**: 完全ローカル実行、データ外部送信なし
+- 🌐 **オフライン動作**: 初回セットアップ後はインターネット不要
 
-## 技術スタック
+## 必要要件
 
-- **FastAPI** (Python 3.11+) - Web API
-- **faster-whisper** - 音声文字起こし
-- **librosa** - 音響特徴抽出
-- **Gemini API** - AI 分析 (キーワード/敬語/感情)
-- **Jinja2** - Markdown レポート生成
+### システム要件
+- **OS**: Windows 10/11, macOS, Linux
+- **CPU**: 4コア以上 (8コア推奨)
+- **RAM**: 8GB以上 (16GB推奨)
+- **ストレージ**: 10GB以上の空き容量
 
-## セットアップ (5 分)
+### ソフトウェア
+- Python 3.9以上
+- FFmpeg (音声処理用)
+- Ollama (AI補正用)
 
-### 1. リポジトリクローン
+## セットアップ
+
+### 1. リポジトリのクローン
 
 ```bash
 git clone https://github.com/ootomonaiso/mensetu_renshyuu.git
 cd mensetu_renshyuu
 ```
 
-### 2. 依存パッケージインストール
+### 2. 仮想環境の作成と有効化
 
-```bash
-# 仮想環境作成 (Windows)
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+#### Windows (PowerShell)
 
-# 仮想環境作成 (Mac/Linux)
-python -m venv .venv
-source .venv/bin/activate
-
-# パッケージインストール
-pip install fastapi uvicorn python-multipart python-dotenv jinja2 faster-whisper librosa google-generativeai soundfile
+仮想環境の作成:
+```powershell
+python -m venv venv
 ```
 
-### 3. 環境変数設定
-
-```bash
-# プロジェクトルートに .env ファイル作成 (Windows PowerShell)
-echo "GEMINI_API_KEY=your_api_key_here" > .env
-
-# Mac/Linux
-echo "GEMINI_API_KEY=your_api_key_here" > .env
+仮想環境の有効化:
+```powershell
+.\venv\Scripts\Activate.ps1
 ```
 
-Gemini API Key は [Google AI Studio](https://aistudio.google.com/app/apikey) で取得してください (無料枠あり)。
+> **注意**: PowerShellの実行ポリシーでエラーが出る場合:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
 
-### 4. ディレクトリ作成
+仮想環境の無効化（作業終了時）:
+```powershell
+deactivate
+```
+
+#### Windows (コマンドプロンプト)
+
+仮想環境の作成:
+```cmd
+python -m venv venv
+```
+
+仮想環境の有効化:
+```cmd
+venv\Scripts\activate.bat
+```
+
+仮想環境の無効化（作業終了時）:
+```cmd
+deactivate
+```
+
+#### macOS/Linux
+
+仮想環境の作成:
+```bash
+python3 -m venv venv
+```
+
+仮想環境の有効化:
+```bash
+source venv/bin/activate
+```
+
+仮想環境の無効化（作業終了時）:
+```bash
+deactivate
+```
+
+> **確認**: 仮想環境が有効化されると、プロンプトの先頭に `(venv)` が表示されます
+
+### 3. 依存パッケージのインストール
+
+仮想環境が有効化された状態で実行:
 
 ```bash
-# Windows PowerShell
-New-Item -ItemType Directory -Force -Path backend\services, backend\templates, output\audio, output\reports
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-# Mac/Linux
-mkdir -p backend/services backend/templates output/audio output/reports
+インストールの確認:
+```bash
+pip list
+```
+
+### 4. FFmpegのインストール
+
+**Windows**:
+```powershell
+# Chocolatey使用
+choco install ffmpeg
+
+# または https://ffmpeg.org/download.html からダウンロード
+```
+
+**macOS**:
+```bash
+brew install ffmpeg
+```
+
+**Linux (Ubuntu/Debian)**:
+```bash
+sudo apt update
+sudo apt install ffmpeg
+```
+
+### 5. Ollamaのインストールと起動
+
+公式サイトからダウンロード: https://ollama.ai/
+
+インストール後、モデルをダウンロード:
+```bash
+ollama pull llama3.2
+```
+
+Ollamaを起動:
+```bash
+ollama serve
+```
+
+### 6. HuggingFace トークンの取得
+
+1. https://huggingface.co/ でアカウント作成
+2. https://huggingface.co/settings/tokens でトークン生成
+3. `.env`ファイルを作成:
+
+```bash
+cp .env.example .env
+```
+
+`.env`ファイルを編集してトークンを設定:
+```
+HUGGINGFACE_TOKEN=your_actual_token_here
+```
+
+### 7. データディレクトリの作成
+
+```bash
+mkdir -p data/uploads data/reports
 ```
 
 ## 使い方
 
-### 1. サーバー起動
+### サーバーの起動
 
 ```bash
-# backend/main.py を実装後
-uvicorn backend.main:app --reload
+python app.py
 ```
 
-起動後、http://127.0.0.1:8000/docs で API ドキュメントが閲覧できます。
+ブラウザで http://localhost:8000 を開く
 
-### 2. 音声ファイルアップロード
+### 面接練習の実施
 
-ブラウザで http://127.0.0.1:8000 にアクセスし、音声ファイル (mp3/wav/m4a) をアップロード。
+1. **録音開始**: "録音開始"ボタンをクリック
+2. **面接練習**: 教師役と生徒役で面接を実施
+3. **録音停止**: "録音停止"ボタンをクリック
+4. **分析実行**: "分析開始"ボタンをクリック
+5. **レポート確認**: 分析完了後、レポートが表示されます
 
-### 3. レポート確認
-
-`output/reports/` ディレクトリに Markdown レポートが生成されます。
-
-## 実装状況
-
-### Phase 1 (簡易版 MVP) - 実装完了 ✅
-
-- ✅ FastAPI サーバー (`backend/main.py`)
-- ✅ 音声アップロード API (`POST /api/analyze`)
-- ✅ faster-whisper 文字起こし
-- ✅ librosa 音響分析 (話速、音量、ポーズ)
-- ✅ **音声感情分析 (声の震え・緊張度検出)** 🆕
-- ✅ Gemini API 連携 (キーワード・敬語・感情)
-- ✅ Markdown レポート生成 (教師コメント欄付き)
-- ✅ 簡易 Web UI (HTML フォーム)
-
-### Phase 2 (リアルタイム機能) - 計画中
-
-- ⏳ WebSocket によるリアルタイム音声ストリーミング
-- ⏳ リアルタイム文字起こし表示
-- ⏳ 発話者識別 (教師/生徒)
-- ⏳ 教師メモ機能 (タイムスタンプ付き)
-
-### Phase 3 (データ管理) - 計画中
-
-- ⏳ セッション履歴管理 (SQLite)
-- ⏳ スコア推移グラフ
-- ⏳ PDF 出力 (WeasyPrint)
-
-### Phase 4 (映像分析) - 将来実装 🎥
-
-- ⏳ **ブラウザカメラでビデオ録画**
-- ⏳ **表情分析**: 笑顔・緊張・困惑の検出 (MediaPipe Face Mesh)
-- ⏳ **視線追跡**: アイコンタクトの頻度・方向 (MediaPipe Face Detection)
-- ⏳ **姿勢分析**: 猫背・前傾・手の動き (MediaPipe Pose)
-- ⏳ **ジェスチャー検出**: 髪を触る・手を組むなどの癖 (MediaPipe Hands)
-- ⏳ **統合レポート**: 音声+映像+感情の総合評価
-
-## プロジェクト構造 (予定)
+## プロジェクト構造
 
 ```
 mensetu_renshyuu/
-├── backend/
-│   ├── main.py              # FastAPI サーバー
-│   ├── services/
-│   │   ├── transcription.py # faster-whisper
-│   │   ├── audio_analysis.py # librosa
-│   │   ├── ai_analysis.py   # Gemini API
-│   │   └── report.py        # Markdown 生成
-│   └── templates/
-│       └── report.md.j2     # レポートテンプレート
-├── output/
-│   ├── audio/               # アップロードした音声
-│   └── reports/             # 生成した Markdown
-├── .env                     # API キー
-├── requirements.txt         # 依存パッケージ
-├── plan.md                  # 開発計画
-├── requirements.md          # 要件定義書
-└── README.md
+├── app.py                 # FastAPIメインアプリケーション
+├── requirements.txt       # Python依存パッケージ
+├── .env.example          # 環境変数テンプレート
+├── README.md             # このファイル
+├── src/
+│   ├── audio/
+│   │   ├── recorder.py       # 録音処理
+│   │   ├── transcriber.py    # Whisper文字起こし
+│   │   ├── diarization.py    # 話者分離
+│   │   └── analyzer.py       # 音声分析
+│   ├── ai/
+│   │   └── corrector.py      # Ollama日本語補正
+│   ├── report/
+│   │   └── generator.py      # レポート生成
+│   └── database/
+│       └── models.py         # データベースモデル
+├── static/
+│   ├── css/
+│   │   └── style.css        # スタイルシート
+│   └── js/
+│       └── app.js           # フロントエンドJS
+├── templates/
+│   └── index.html           # メインUI
+└── data/
+    ├── uploads/             # 録音ファイル保存先
+    ├── reports/             # レポート保存先
+    └── interviews.db        # SQLiteデータベース
 ```
 
-## 技術詳細
+## トラブルシューティング
 
-### faster-whisper
-- OpenAI Whisper の高速版 (CTranslate2)
-- CPU でも動作、GPU があれば 10 倍高速
-- 日本語の認識精度が高い
+### Whisperが遅い場合
+`.env`ファイルで小さいモデルを選択:
+```
+WHISPER_MODEL=tiny  # または base
+```
 
-### librosa
-- 音響特徴抽出ライブラリ
-- 話速、音量、ポーズ検出などに使用
-- NumPy/SciPy ベース
+### GPU使用時のエラー
+CUDA対応GPUがある場合、PyTorch GPU版をインストール:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
 
-### Gemini API
-- Google の大規模言語モデル
-- 無料枠: 1,500 リクエスト/日
-- キーワード抽出、敬語判定、感情分析に使用
+### Ollamaに接続できない
+Ollamaが起動しているか確認:
+```bash
+ollama list
+```
 
-## 次のステップ
+## リリース・タグ付け手順（開発者向け）
 
-`plan.md` を参照し、以下の順で実装を進めます:
+新しいバージョンをリリースする場合は、以下の手順でタグを作成します：
 
-1. FastAPI 最小サーバー作成
-2. 音声アップロード API 実装
-3. faster-whisper 連携
-4. librosa 音響分析追加
-5. Gemini API 連携
-6. Markdown レポート生成
-7. 簡易 Web UI 追加
+### 1. バージョンタグの作成
+
+```bash
+# バージョン番号を決定（例: v1.0.0）
+git tag -a v1.0.0 -m "Release version 1.0.0"
+```
+
+### 2. タグをGitHubにプッシュ
+
+```bash
+git push origin v1.0.0
+```
+
+### 3. 自動リリース作成
+
+タグをプッシュすると、GitHub Actionsが自動的に：
+- リリースノートを生成
+- ソースコードのアーカイブ（.tar.gz と .zip）を作成
+- GitHubのReleasesページに公開
+
+### バージョン番号の規則
+
+セマンティックバージョニング（SemVer）に従います：
+
+- **v1.0.0**: メジャーバージョン（互換性のない変更）
+- **v1.1.0**: マイナーバージョン（後方互換性のある機能追加）
+- **v1.0.1**: パッチバージョン（バグ修正）
+
+### リリースの確認
+
+リリース後は以下のURLで確認できます：
+```
+https://github.com/ootomonaiso/mensetu_renshyuu/releases
+```
 
 ## ライセンス
 
 MIT License
 
-## 関連ドキュメント
+## 貢献
 
-- [要件定義書](./requirements.md)
-- [開発計画](./plan.md)
-- [技術スタック詳細](./docs/tech-stack.md)
+プルリクエストを歓迎します！
 
+## 参考リンク
+
+- [OpenAI Whisper](https://github.com/openai/whisper)
+- [pyannote.audio](https://github.com/pyannote/pyannote-audio)
+- [Ollama](https://ollama.ai/)
+- [VoiceMind](https://voicemind.net/)
