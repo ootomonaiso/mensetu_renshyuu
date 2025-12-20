@@ -41,22 +41,76 @@ cd mensetu_renshyuu
 
 ### 2. 仮想環境の作成と有効化
 
-**Windows (PowerShell)**:
+#### Windows (PowerShell)
+
+仮想環境の作成:
 ```powershell
 python -m venv venv
+```
+
+仮想環境の有効化:
+```powershell
 .\venv\Scripts\Activate.ps1
 ```
 
-**macOS/Linux**:
+> **注意**: PowerShellの実行ポリシーでエラーが出る場合:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
+
+仮想環境の無効化（作業終了時）:
+```powershell
+deactivate
+```
+
+#### Windows (コマンドプロンプト)
+
+仮想環境の作成:
+```cmd
+python -m venv venv
+```
+
+仮想環境の有効化:
+```cmd
+venv\Scripts\activate.bat
+```
+
+仮想環境の無効化（作業終了時）:
+```cmd
+deactivate
+```
+
+#### macOS/Linux
+
+仮想環境の作成:
 ```bash
 python3 -m venv venv
+```
+
+仮想環境の有効化:
+```bash
 source venv/bin/activate
 ```
 
+仮想環境の無効化（作業終了時）:
+```bash
+deactivate
+```
+
+> **確認**: 仮想環境が有効化されると、プロンプトの先頭に `(venv)` が表示されます
+
 ### 3. 依存パッケージのインストール
 
+仮想環境が有効化された状態で実行:
+
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+インストールの確認:
+```bash
+pip list
 ```
 
 ### 4. FFmpegのインストール
@@ -184,6 +238,45 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 Ollamaが起動しているか確認:
 ```bash
 ollama list
+```
+
+## リリース・タグ付け手順（開発者向け）
+
+新しいバージョンをリリースする場合は、以下の手順でタグを作成します：
+
+### 1. バージョンタグの作成
+
+```bash
+# バージョン番号を決定（例: v1.0.0）
+git tag -a v1.0.0 -m "Release version 1.0.0"
+```
+
+### 2. タグをGitHubにプッシュ
+
+```bash
+git push origin v1.0.0
+```
+
+### 3. 自動リリース作成
+
+タグをプッシュすると、GitHub Actionsが自動的に：
+- リリースノートを生成
+- ソースコードのアーカイブ（.tar.gz と .zip）を作成
+- GitHubのReleasesページに公開
+
+### バージョン番号の規則
+
+セマンティックバージョニング（SemVer）に従います：
+
+- **v1.0.0**: メジャーバージョン（互換性のない変更）
+- **v1.1.0**: マイナーバージョン（後方互換性のある機能追加）
+- **v1.0.1**: パッチバージョン（バグ修正）
+
+### リリースの確認
+
+リリース後は以下のURLで確認できます：
+```
+https://github.com/ootomonaiso/mensetu_renshyuu/releases
 ```
 
 ## ライセンス

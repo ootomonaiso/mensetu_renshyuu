@@ -1,10 +1,15 @@
 """
-分析レポート生成
+分析レポート生成（感情チャート付き）
 """
 from datetime import datetime
 from typing import Dict, List
 import json
 import os
+import matplotlib
+matplotlib.use('Agg')  # GUIなし環境用
+import matplotlib.pyplot as plt
+import base64
+from io import BytesIO
 
 
 class ReportGenerator:
@@ -181,6 +186,16 @@ class ReportGenerator:
         .warning {{
             color: #ffc107;
         }}
+        .chart-container {{
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        .chart-container h4 {{
+            margin-top: 0;
+            color: #667eea;
+        }}
         .footer {{
             text-align: center;
             color: #999;
@@ -235,7 +250,7 @@ class ReportGenerator:
         return "\n".join(lines)
     
     def _format_audio_analysis(self, analysis: Dict) -> str:
-        """音声分析結果をHTMLフォーマット"""
+        """音声分析結果をHTMLフォーマット（感情チャート付き）"""
         by_speaker = analysis.get("by_speaker", {})
         
         html_parts = ['<div class="section"><h2>🎵 音声分析結果</h2>']
@@ -244,18 +259,26 @@ class ReportGenerator:
             score_data = analysis.get(f"{speaker}_evaluation", {})
             score = score_data.get("score", 0)
             feedback = score_data.get("feedback", [])
+            emotions = data.get("emotion_average", {})
+            
+            # 感情チャートを生成
+            chart_img = self._create_emotion_chart(data, speaker)
             
             html_parts.append(f'''
                 <h3>{speaker} の分析</h3>
                 <div class="score">{score}点</div>
                 <div class="metrics">
                     <div class="metric">
-                        <div class="metric-label">平均ピッチ</div>
-                        <div class="metric-value">{data.get("pitch_mean", 0):.1f} Hz</div>
+                        <div class="metric-label">自信度</div>
+                        <div class="metric-value">{emotions.get("confidence", 0):.1f}%</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">平均音量</div>
-                        <div class="metric-value">{data.get("volume_mean", 0):.1f} dB</div>
+                        <div class="metric-label">活力</div>
+                        <div class="metric-value">{emotions.get("energy", 0):.1f}%</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">落ち着き</div>
+                        <div class="metric-value">{emotions.get("calmness", 0):.1f}%</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">話速</div>
@@ -266,6 +289,12 @@ class ReportGenerator:
                         <div class="metric-value">{data.get("total_duration", 0):.1f} 秒</div>
                     </div>
                 </div>
+                
+                <div class="chart-container">
+                    <h4>感情の推移</h4>
+                    <img src="data:image/png;base64,{chart_img}" alt="感情推移グラフ" style="max-width: 100%; height: auto;">
+                </div>
+                
                 <div class="feedback">
                     <h4>フィードバック</h4>
             ''')
@@ -305,6 +334,58 @@ class ReportGenerator:
         html += '</div></div>'
         
         return html
+    
+    def _create_emotion_chart(self, speaker_data: Dict, speaker_name: str) -> str:
+        """
+        感情の時系列チャートを生成してBase64エンコード
+        
+        Args:
+            speaker_data: 話者の分析データ
+            speaker_name: 話者名
+        
+        Returns:
+            Base64エンコードされた画像
+        """
+        emotion_timeline = speaker_data.get("emotion_timeline", [])
+        
+        if not emotion_timeline:
+            return ""
+        
+        # 日本語フォント設定
+        plt.rcParams['font.sans-serif'] = ['MS Gothic', 'Yu Gothic', 'Meiryo', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        # データ準備
+        times = [e["time"] / 60 for e in emotion_timeline]  # 秒から分に変換
+        confidence = [e["confidence"] for e in emotion_timeline]
+        energy = [e["energy"] for e in emotion_timeline]
+        calmness = [e["calmness"] for e in emotion_timeline]
+        stress = [e["stress"] for e in emotion_timeline]
+        
+        # グラフ作成
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        ax.plot(times, confidence, label='自信度', marker='o', linewidth=2, markersize=4, color='#667eea')
+        ax.plot(times, energy, label='活力', marker='s', linewidth=2, markersize=4, color='#f093fb')
+        ax.plot(times, calmness, label='落ち着き', marker='^', linewidth=2, markersize=4, color='#4facfe')
+        ax.plot(times, stress, label='緊張度', marker='d', linewidth=2, markersize=4, color='#fa709a')
+        
+        ax.set_xlabel('時間 (分)', fontsize=12)
+        ax.set_ylabel('スコア (%)', fontsize=12)
+        ax.set_title(f'{speaker_name}の感情推移', fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(0, 100)
+        
+        # Base64エンコード
+        buffer = BytesIO()
+        plt.tight_layout()
+        plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode()
+        plt.close(fig)
+        
+        return image_base64
     
     @staticmethod
     def _format_time(seconds: float) -> str:

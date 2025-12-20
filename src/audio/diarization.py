@@ -45,9 +45,10 @@ class Diarizer:
         # 環境変数でトークンを設定(huggingface_hub 新バージョン対応)
         os.environ["HF_TOKEN"] = self.hf_token
         
+        # 新しいAPIではtokenパラメータを使用
         self.pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=self.hf_token
+            token=self.hf_token  # use_auth_token から token に変更
         )
         
         # GPU使用可能ならGPUを使用
@@ -57,18 +58,20 @@ class Diarizer:
         else:
             print("Using CPU for diarization")
     
-    def diarize(self, audio_path: str, num_speakers: int = 2) -> List[Dict]:
+    def diarize(self, audio_path: str, num_speakers: int = None, min_speakers: int = 1, max_speakers: int = 3) -> List[Dict]:
         """
         音声ファイルの話者分離を実行
         
         Args:
             audio_path: 音声ファイルパス
-            num_speakers: 話者数
+            num_speakers: 話者数（Noneの場合は自動検出）
+            min_speakers: 最小話者数（自動検出時）
+            max_speakers: 最大話者数（自動検出時）
         
         Returns:
             話者分離結果のリスト
         """
-        print(f"Diarizing: {audio_path}")
+        print(f"Diarizing: {audio_path} (speakers: {num_speakers or 'auto'})")
         
         # 音声ファイルをlibrosaで読み込んで一時ファイルに保存
         # これによりフォーマットの問題を回避
@@ -81,10 +84,19 @@ class Diarizer:
                 tmp_path = tmp.name
             
             # 話者分離実行
-            diarization = self.pipeline(
-                tmp_path,
-                num_speakers=num_speakers
-            )
+            if num_speakers is not None:
+                # 話者数が指定されている場合
+                diarization = self.pipeline(
+                    tmp_path,
+                    num_speakers=num_speakers
+                )
+            else:
+                # 話者数を自動検出
+                diarization = self.pipeline(
+                    tmp_path,
+                    min_speakers=min_speakers,
+                    max_speakers=max_speakers
+                )
             
             # 一時ファイル削除
             os.unlink(tmp_path)
@@ -152,35 +164,66 @@ class Diarizer:
         
         return result_segments
     
-    def map_speakers_to_roles(self, segments: List[Dict]) -> List[Dict]:
+    def map_speakers_to_roles(self, segments: List[Dict], teacher_first: bool = True) -> List[Dict]:
         """
         話者ラベル（SPEAKER_00, SPEAKER_01）を役割（教師、生徒）にマッピング
         
         Args:
             segments: 話者ラベル付きセグメント
+            teacher_first: Trueの場合、最初に発話した人を教師とする（デフォルト）
         
         Returns:
             役割マッピング済みセグメント
         """
-        # 話者ごとの発話回数をカウント
-        speaker_counts = {}
+        if not segments:
+            return segments
+        
+        # 話者ごとの統計情報を収集
+        speaker_stats = {}
         for seg in segments:
             speaker = seg["speaker"]
-            speaker_counts[speaker] = speaker_counts.get(speaker, 0) + 1
+            if speaker not in speaker_stats:
+                speaker_stats[speaker] = {
+                    "count": 0,
+                    "total_duration": 0,
+                    "first_appearance": seg["start"],
+                    "texts": []
+                }
+            speaker_stats[speaker]["count"] += 1
+            speaker_stats[speaker]["total_duration"] += seg["end"] - seg["start"]
+            speaker_stats[speaker]["texts"].append(seg["text"])
         
-        # 最も発話が多い話者を教師と仮定（通常、教師の方が質問が多い）
-        sorted_speakers = sorted(speaker_counts.items(), key=lambda x: x[1], reverse=True)
-        
+        # マッピング戦略を選択
         speaker_map = {}
+        sorted_speakers = sorted(speaker_stats.items(), key=lambda x: x[1]["first_appearance"])
+        
         if len(sorted_speakers) >= 2:
-            speaker_map[sorted_speakers[0][0]] = "教師"
-            speaker_map[sorted_speakers[1][0]] = "生徒"
+            if teacher_first:
+                # 最初に発話した人を教師とする（面接開始時の挨拶など）
+                speaker_map[sorted_speakers[0][0]] = "教師"
+                speaker_map[sorted_speakers[1][0]] = "生徒"
+            else:
+                # 発話回数が多い方を教師とする
+                sorted_by_count = sorted(speaker_stats.items(), key=lambda x: x[1]["count"], reverse=True)
+                speaker_map[sorted_by_count[0][0]] = "教師"
+                speaker_map[sorted_by_count[1][0]] = "生徒"
         elif len(sorted_speakers) == 1:
             speaker_map[sorted_speakers[0][0]] = "教師"
+        
+        # その他の話者がいる場合
+        for speaker in speaker_stats.keys():
+            if speaker not in speaker_map:
+                speaker_map[speaker] = f"話者{len(speaker_map) + 1}"
         
         # マッピング適用
         for seg in segments:
             seg["speaker"] = speaker_map.get(seg["speaker"], "不明")
+        
+        # 統計情報を出力
+        print("\n=== 話者分離統計 ===")
+        for orig_speaker, role in speaker_map.items():
+            stats = speaker_stats[orig_speaker]
+            print(f"{role}: 発話回数={stats['count']}, 総発話時間={stats['total_duration']:.1f}秒")
         
         return segments
 

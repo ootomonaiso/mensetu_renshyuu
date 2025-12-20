@@ -135,12 +135,37 @@ async def process_interview(interview_id: int, filepath: str):
         
         # 2. 話者分離
         print(f"[{interview_id}] Step 2: Diarization...")
-        if diarizer:
-            diar_segments = diarizer.diarize(filepath)
-            segments = diarizer.assign_speakers_to_segments(segments, diar_segments)
-            segments = diarizer.map_speakers_to_roles(segments)
+        diarization_enabled = os.getenv("DIARIZATION_ENABLED", "true").lower() == "true"
+        
+        if diarizer and diarization_enabled:
+            try:
+                # 話者数の設定を取得
+                num_speakers_env = os.getenv("NUM_SPEAKERS", "")
+                num_speakers = int(num_speakers_env) if num_speakers_env else None
+                min_speakers = int(os.getenv("MIN_SPEAKERS", "1"))
+                max_speakers = int(os.getenv("MAX_SPEAKERS", "3"))
+                
+                # 話者分離実行
+                diar_segments = diarizer.diarize(
+                    filepath,
+                    num_speakers=num_speakers,
+                    min_speakers=min_speakers,
+                    max_speakers=max_speakers
+                )
+                
+                # 文字起こしと話者を結合
+                segments = diarizer.assign_speakers_to_segments(segments, diar_segments)
+                
+                # 役割マッピング
+                teacher_first = os.getenv("TEACHER_FIRST", "true").lower() == "true"
+                segments = diarizer.map_speakers_to_roles(segments, teacher_first=teacher_first)
+            except Exception as e:
+                print(f"Warning: Diarization failed: {e}")
+                for seg in segments:
+                    seg["speaker"] = "不明"
         else:
             # 話者分離が利用できない場合はスキップ
+            print("Diarization is disabled or not available")
             for seg in segments:
                 seg["speaker"] = "不明"
         
@@ -149,8 +174,9 @@ async def process_interview(interview_id: int, filepath: str):
         if corrector:
             segments = corrector.analyze_segments(segments)
         
-        # 文字起こし保存
+        # 文字起こし保存（日本語補正の有無に関わらず保存）
         interview.transcription = transcriber.format_transcript(segments)
+        db.commit()  # ここで一度コミット
         
         # 4. 音声分析
         print(f"[{interview_id}] Step 4: Audio analysis...")
@@ -201,7 +227,10 @@ async def process_interview(interview_id: int, filepath: str):
         print(f"[{interview_id}] Processing completed!")
         
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
         print(f"[{interview_id}] Error: {e}")
+        print(f"[{interview_id}] Traceback:\n{error_detail}")
         interview.status = "failed"
         interview.error_message = str(e)
         db.commit()
